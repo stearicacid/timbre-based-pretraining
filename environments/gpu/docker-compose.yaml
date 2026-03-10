@@ -1,0 +1,28 @@
+name: gpu-${PROJECT_NAME_ENV}
+services:
+  vaemonics:
+    shm_size: "4g"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+              count: all
+    build:
+      args:
+        - BASE_IMAGE=nvidia/cuda:11.0.3-devel-ubuntu20.04
+        - PYTHON_VERSION=3.9
+        - UID=${HOST_UID-1000}
+        - GID=${HOST_GID-1000}
+        - PROJECT_NAME=${PROJECT_NAME_ENV}
+      context: ../../
+      dockerfile: environments/Dockerfile
+    # env_file:
+    #   - ../envs.env
+    tty: true
+
+    # add these if you need
+    # volumes:
+    # groups:
+    # ports:
