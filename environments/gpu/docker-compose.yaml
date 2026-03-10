@@ -1,6 +1,6 @@
 name: gpu-${PROJECT_NAME_ENV}
 services:
-  vaemonics:
+  timbre_based_pretraining:
     shm_size: "4g"
     deploy:
       resources:
