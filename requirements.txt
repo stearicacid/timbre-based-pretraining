@@ -7,7 +7,7 @@ numpy==1.23.2
 matplotlib==3.7.5
 librosa==0.10.0
 
-ddsp==3.7.0
+protobuf==3.19.6
 
 hydra-core
 wandb

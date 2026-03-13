@@ -6,7 +6,7 @@ ARG USER_NAME=your_user_name
 ARG GROUP_NAME=your_user_name
 ARG UID=your_user_id
 ARG GID=your_group_id
-ARG PYTHON_VERSION=3.9
+ARG PYTHON_VERSION=3.8
 ARG APPLICATION_DIRECTORY=/home/${USER_NAME}/${PROJECT_NAME}
 ARG RUN_UV_SYNC_AT_BUILD_TIME="false"
 
@@ -75,7 +75,7 @@ RUN update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON
     && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1
 
 # Install pip for specified Python version
-RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python${PYTHON_VERSION}
+RUN curl -sS https://bootstrap.pypa.io/pip/3.8/get-pip.py | python${PYTHON_VERSION}
 
 # Install Poethepoet directly using pip to type "poe" command without "uv run".
 RUN python3 -m pip install --upgrade pip setuptools requests wheel six urllib3 \
