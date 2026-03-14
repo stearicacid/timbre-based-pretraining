@@ -1,0 +1,56 @@
+defaults:
+  - dataset: default
+  - model: ddsp
+  - audio: default
+  - training: default
+  - features: default
+  - datapath: nsynth_harmonic
+  - _self_
+
+tfds_dir: /mlnas/rin/tensorflow_datasets  # TensorFlow Datasets location
+
+
+# output directory 
+output_dir: /mlnas/rin/processed2/${feature_type}_${now:%Y-%m-%d_%H-%M}
+
+# モデル評価用設定
+model_path: null
+test_split: test
+eval_batch_size: 32
+
+# データ処理設定
+feature_type: harmonic
+split: train
+max_samples: null
+num_workers: null
+all_splits: false
+seed: 42
+
+# データセット設定
+data:
+  pool_time_dim: false  # 入力時に時間次元を平均化するか
+
+# GPU並列処理設定
+workers_per_gpu: 2
+save_extended_features: true
+max_tasks_per_restart: 5  # 追加: 何タスクごとにワーカーを再起動するか
+
+# Wandb settings
+wandb:
+  enabled: true
+  project: "harmonet"
+  entity: rinsato-waseda-university
+  name: null
+  tags: ["timbre-classification"]
+  notes: "Timbre classification using DDSP harmonic distribution"
+  mode: "online"
+
+# Hydra settings
+hydra:
+  run:
+    dir: ${output_dir}/${split}
+  sweep:
+    dir: ${output_dir}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  job:
+    env_set:
+      WANDB_START_METHOD: thread

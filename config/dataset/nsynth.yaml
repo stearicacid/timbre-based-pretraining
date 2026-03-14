@@ -1,0 +1,11 @@
+# データセットパラメータ
+name: nsynth/full:2.3.3
+split: train
+nsynth_dir: null # dataset directory, null for default location
+max_samples: null  # limit the number of samples to load, null for no limit
+train_max_samples: null  # limit for training set
+valid_max_samples: null  # limit for validation set
+test_max_samples: null  # limit for test set
+sample_rate: 16000
+frame_rate: 250
+max_length: 64000

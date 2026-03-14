@@ -1,0 +1,21 @@
+# 倍音分布を抽出したもの (前処理済みのもの) の場所
+train_data_dir: /mlnas/rin/ddsp/train
+valid_data_dir: /mlnas/rin/ddsp/valid
+test_data_dir: /mlnas/rin/ddsp/test
+harmonic_stats_dir: /mlnas/rin/ddsp_normalized/statistics
+splits:
+  train: train
+  valid: valid
+  test: test
+
+data_dirs:
+  train: /mlnas/rin/ddsp/train
+  valid: /mlnas/rin/ddsp/valid
+  test: /mlnas/rin/ddsp/test
+
+# ハーモニックデータセット設定
+data_root: /mlnas/rin/ddsp_normalized  # 正規化済みデータのルート
+
+# データ読み込み設定
+cache_enabled: true
+verify_data: true  # データの整合性チェック
