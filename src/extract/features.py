@@ -9,6 +9,9 @@ from ddsp.training import train_util
 
 from utils.utils import cleanup_tensorflow_memory
 
+import logging
+logger = logging.getLogger(__name__)
+
 def extract_harmonic_distribution(audio_np, cfg):
     """
     extract harmonic distribution from audio using DDSP model with controls (f0, loudness) 
@@ -16,6 +19,10 @@ def extract_harmonic_distribution(audio_np, cfg):
     
     sample_rate = getattr(cfg.audio, 'sample_rate', 16000)
     max_length = getattr(cfg.audio, 'max_length', 64000)
+
+    audio_np = np.asarray(audio_np, dtype=np.float32)
+    if audio_np.ndim != 1:
+        raise ValueError(f"audio_np must be 1D, got shape={audio_np.shape}")
     
     if len(audio_np) > max_length:
         audio_np = audio_np[:max_length]
@@ -26,15 +33,23 @@ def extract_harmonic_distribution(audio_np, cfg):
     
     try:
         spectral_ops.reset_crepe()
-        f0_hz_np, f0_confidence_np = spectral_ops.compute_f0(audio_tf[0], frame_rate=250, viterbi=True)
-        f0_hz_tf = tf.expand_dims(f0_hz_np, 0)
+        f0_hz_np, f0_confidence_np = spectral_ops.compute_f0(
+            audio_tf[0],
+            frame_rate=250,
+            viterbi=True,
+        )
         loudness_db_tf = spectral_ops.compute_loudness(audio_tf, sample_rate)
+        f0_hz_tf = tf.convert_to_tensor(f0_hz_np[None, :], dtype=tf.float32)
 
     except Exception as e:
-        time_steps = 1000
-        f0_hz_tf = tf.ones([1, time_steps], dtype=tf.float32) * 440.0
-        loudness_db_tf = tf.ones([1, time_steps], dtype=tf.float32) * -30.0
-        f0_confidence_np = tf.ones([time_steps], dtype=tf.float32) * 0.5
+        logger.warning(f"Failed to compute f0 and loudness using CREPE. Using default values: {e}")
+        time_steps = cfg.model.time_steps
+        f0_hz_np = np.full((time_steps,), 440.0, dtype=np.float32)
+        f0_confidence_np = np.full((time_steps,), 0.5, dtype=np.float32)
+        loudness_db_np = np.full((time_steps,), -30.0, dtype=np.float32)
+
+        f0_hz_tf = tf.convert_to_tensor(f0_hz_np[None, :], dtype=tf.float32)
+        loudness_db_tf = tf.convert_to_tensor(loudness_db_np[None, :], dtype=tf.float32)
 
     cleanup_tensorflow_memory()
 
@@ -51,11 +66,11 @@ def extract_harmonic_distribution(audio_np, cfg):
         'audio': audio_tf, 'f0_hz': f0_hz_tf, 'loudness_db': loudness_db_tf
     }).repeat()
 
-    TIME_STEPS = cfg.model.time_steps
+    time_steps = cfg.model.time_steps
     n_samples = audio_tf.shape[1]
 
     with strategy.scope():
-        preprocessor = preprocessing.F0LoudnessPreprocessor(time_steps=TIME_STEPS)
+        preprocessor = preprocessing.F0LoudnessPreprocessor(time_steps=time_steps)
         decoder = decoders.RnnFcDecoder(
             rnn_channels=cfg.model.decoder.rnn_channels, rnn_type=cfg.model.decoder.rnn_type,
             ch=cfg.model.decoder.ch, layers_per_stack=cfg.model.decoder.layers_per_stack,
@@ -102,25 +117,14 @@ def extract_harmonic_distribution(audio_np, cfg):
     harmonic_distribution_np = controls['harmonic_distribution'][0].numpy()
     amps_np = controls['amps'][0].numpy()
     noise_magnitudes_np = controls['noise_magnitudes'][0].numpy()
-
-
-    if isinstance(f0_hz_np, tf.Tensor):
-        f0_hz_original = f0_hz_np.numpy()
-    else:
-        f0_hz_original = f0_hz_np
         
     loudness_db_original = loudness_db_tf[0].numpy()
-    
-    if isinstance(f0_confidence_np, tf.Tensor):
-        f0_confidence_original = f0_confidence_np.numpy()
-    else:
-        f0_confidence_original = f0_confidence_np
     
     return {
         'harmonic_distribution': harmonic_distribution_np,
         'amps': amps_np,
         'noise_magnitudes': noise_magnitudes_np,
-        'f0_hz': f0_hz_original,
+        'f0_hz': f0_hz_np,
         'loudness_db': loudness_db_original,
-        'f0_confidence': f0_confidence_original
+        'f0_confidence': f0_confidence_np
     }
