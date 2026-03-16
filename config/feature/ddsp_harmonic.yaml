@@ -1,0 +1,33 @@
+# DDSP-based harmonic feature extraction settings.
+type: harmonic
+
+audio:
+  # Input waveform sample rate expected by DDSP utilities.
+  sample_rate: 16000
+  # Fixed waveform length used for padding/truncation.
+  max_length: 64000
+  # Used by DDSP F0/loudness computation.
+  frame_rate: 250
+
+ddsp:
+  # Number of temporal frames in the preprocessor.
+  time_steps: 1000
+
+  decoder:
+    rnn_channels: 512
+    rnn_type: gru
+    ch: 512
+    layers_per_stack: 3
+
+  harmonic:
+    # Number of harmonic bins predicted by the decoder.
+    n_harmonics: 64
+
+  noise:
+    window_size: 0
+    initial_bias: -10.0
+
+  training:
+    # Lightweight optimization only to infer controls from one example.
+    learning_rate: 0.001
+    n_steps: 1

@@ -1,0 +1,11 @@
+# Runtime settings for GPU-parallel extraction workers.
+workers_per_gpu: 2
+
+multiprocessing:
+  start_method: spawn
+  pool:
+    maxtasksperchild: 1
+    chunksize: 1
+
+# If true, preserve externally provided CUDA_VISIBLE_DEVICES mapping.
+respect_parent_cuda_visible_devices: true

@@ -1,0 +1,38 @@
+defaults:
+  - dataset: nsynth
+  - feature: ddsp_harmonic
+  - runtime: gpu_parallel
+  - _self_
+
+# Public/reproducible defaults for DDSP feature extraction.
+project_name: timbre_based_pretraining
+seed: 42
+
+paths:
+  # Optional TFDS cache directory. Keep null to use the framework default.
+  tfds_data_dir: null
+  # Root directory where extracted files are written.
+  output_root: ${hydra:runtime.cwd}/outputs/extract/${now:%Y%m%d_%H%M%S}
+
+extraction:
+  # NSynth split to process.
+  split: train
+  # Keep true for the current DDSP harmonic extraction pipeline.
+  save_features: true
+
+# Backward-compatibility aliases for existing scripts and modules.
+output_dir: ${paths.output_root}
+split: ${extraction.split}
+feature_type: ${feature.type}
+workers_per_gpu: ${runtime.workers_per_gpu}
+save_extended_features: ${extraction.save_features}
+max_samples: ${dataset.max_samples}
+audio: ${feature.audio}
+model: ${feature.ddsp}
+
+hydra:
+  run:
+    dir: ${paths.output_root}/hydra/${extraction.split}
+  sweep:
+    dir: ${hydra:runtime.cwd}/outputs/multirun/${now:%Y%m%d}/${now:%H%M%S}
+    subdir: ${hydra.job.num}

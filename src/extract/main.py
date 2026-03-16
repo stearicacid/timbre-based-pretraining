@@ -2,14 +2,20 @@ import os
 import tensorflow as tf
 from tqdm import tqdm
 import hydra
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 import time
 import multiprocessing as mp
 
-from ..utils.logging import logger
-from .dataset import CustomNSynthTfds
-from .workers import process_single_sample
-from .save import save_results
+from utils.logging import logger
+from extract.dataset import CustomNSynthTfds
+from extract.workers import process_single_sample
+from extract.save import save_results
+
+
+def _select(cfg: DictConfig, key: str, default=None):
+    """Safely fetch nested config values with a default."""
+    value = OmegaConf.select(cfg, key)
+    return default if value is None else value
 
 def extract_nsynth_features(cfg, split="train", feature_type="harmonic", max_samples=None, workers_per_gpu=None):
     """
@@ -17,7 +23,8 @@ def extract_nsynth_features(cfg, split="train", feature_type="harmonic", max_sam
     """
     print(f"[DEBUG] extract_nsynth_features 開始")
     
-    output_dir = os.path.join(cfg.output_dir, split)
+    output_root = _select(cfg, "paths.output_root", getattr(cfg, "output_dir", "outputs/extract"))
+    output_dir = os.path.join(output_root, split)
     os.makedirs(output_dir, exist_ok=True)
     
     start_time_total = time.time()
@@ -43,7 +50,7 @@ def extract_nsynth_features(cfg, split="train", feature_type="harmonic", max_sam
     logger.info(f"Using {num_physical_gpus} GPU(s): {gpu_ids}")
 
     if workers_per_gpu is None:
-        workers_per_gpu = getattr(cfg, 'workers_per_gpu', 2)
+        workers_per_gpu = _select(cfg, "runtime.workers_per_gpu", getattr(cfg, "workers_per_gpu", 2))
     
     total_workers = num_physical_gpus * workers_per_gpu
     logger.info(f"Starting {workers_per_gpu} workers per GPU, for a total of {total_workers} workers.")
@@ -52,9 +59,10 @@ def extract_nsynth_features(cfg, split="train", feature_type="harmonic", max_sam
     data_provider = CustomNSynthTfds(
         name=cfg.dataset.name,
         split=split,
-        data_dir=cfg.dataset.data_dir,
-        sample_rate=cfg.audio.sample_rate,
-        frame_rate=250
+        data_dir=_select(cfg, "dataset.data_dir", None),
+        sample_rate=_select(cfg, "audio.sample_rate", 16000),
+        frame_rate=_select(cfg, "dataset.frame_rate", 250),
+        include_note_labels=_select(cfg, "dataset.include_note_labels", True),
     )
 
     try:
@@ -69,7 +77,9 @@ def extract_nsynth_features(cfg, split="train", feature_type="harmonic", max_sam
                     'mallet', 'organ', 'reed', 'string', 'synth_lead', 'vocal']
 
     if max_samples is None:
-        max_samples = getattr(cfg.dataset, 'max_samples', 1000000)
+        max_samples = _select(cfg, "dataset.max_samples", 1000000)
+    if max_samples is None:
+        max_samples = 1000000
     
     existing_files = {f[8:-4] for f in os.listdir(output_dir) if f.startswith('feature_') and f.endswith('.npy')}
     logger.info(f"Found {len(existing_files)} existing processed files.")
@@ -138,17 +148,25 @@ def extract_nsynth_features(cfg, split="train", feature_type="harmonic", max_sam
     failed_tasks = 0
     
     # 【変更】バッチ保存用の設定
-    SAVE_BATCH_SIZE = workers_per_gpu * num_physical_gpus # ワーカーの総数ごとに保存
+    save_batch_size = _select(cfg, "runtime.save_batch_size", None)
+    SAVE_BATCH_SIZE = save_batch_size or (workers_per_gpu * num_physical_gpus)
     results_batch = []
 
     try:
         pool_start_time = time.time()
-        with mp.Pool(processes=total_workers, maxtasksperchild=1) as pool:
+        with mp.Pool(
+            processes=total_workers,
+            maxtasksperchild=_select(cfg, "runtime.multiprocessing.pool.maxtasksperchild", 1),
+        ) as pool:
             logger.info("Starting parallel processing with ProcessPool...")
             print(f"[DEBUG] プールの開始時間: {time.time() - pool_start_time:.3f}秒")
 
             with tqdm(total=len(tasks_to_process), desc="Processing samples") as pbar:
-                for result in pool.imap_unordered(process_single_sample, tasks_to_process, chunksize=1):
+                for result in pool.imap_unordered(
+                    process_single_sample,
+                    tasks_to_process,
+                    chunksize=_select(cfg, "runtime.multiprocessing.pool.chunksize", 1),
+                ):
                     if result and result["status"] == "success":
                         results_batch.append(result) # 結果をバッチに追加
                         completed_tasks += 1
@@ -192,18 +210,22 @@ def extract_nsynth_features(cfg, split="train", feature_type="harmonic", max_sam
     return all_paths
 
 
-@hydra.main(config_path="../conf", config_name="config")
+@hydra.main(config_path="../../config", config_name="extract", version_base=None)
 def main(cfg: DictConfig):
-    mp.set_start_method('spawn', force=True)
+    start_method = _select(cfg, "runtime.multiprocessing.start_method", "spawn")
+    mp.set_start_method(start_method, force=True)
     
-    if getattr(cfg, 'save_extended_features', False):
+    should_extract = _select(cfg, "extraction.save_features", getattr(cfg, "save_extended_features", False))
+    if should_extract:
         logger.info("Using extended feature extraction with memory management")
+        split = _select(cfg, "extraction.split", getattr(cfg, "split", "train"))
+        feature_type = _select(cfg, "feature.type", getattr(cfg, "feature_type", "harmonic"))
         extract_nsynth_features(
             cfg,
-            cfg.split,
-            cfg.feature_type,
-            cfg.max_samples if hasattr(cfg, 'max_samples') else None,
-            cfg.workers_per_gpu if hasattr(cfg, 'workers_per_gpu') else None
+            split,
+            feature_type,
+            _select(cfg, "dataset.max_samples", getattr(cfg, "max_samples", None)),
+            _select(cfg, "runtime.workers_per_gpu", getattr(cfg, "workers_per_gpu", None)),
         )
 
 if __name__ == "__main__":

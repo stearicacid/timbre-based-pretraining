@@ -4,8 +4,8 @@ import tensorflow as tf
 from datetime import datetime
 import hashlib
 
-from ..utils.utils import cleanup_tensorflow_memory
-from .features import extract_harmonic_distribution
+from utils.utils import cleanup_tensorflow_memory
+from extract.features import extract_harmonic_distribution
 
 def process_single_sample(params):
     """

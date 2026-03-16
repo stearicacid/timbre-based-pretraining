@@ -8,7 +8,7 @@ from ddsp.training import models, preprocessing, decoders
 from ddsp import spectral_ops
 from ddsp.training import train_util
 
-from ..utils.utils import cleanup_tensorflow_memory
+from utils.utils import cleanup_tensorflow_memory
 
 def extract_harmonic_distribution(audio_np, cfg):
     """
@@ -27,7 +27,6 @@ def extract_harmonic_distribution(audio_np, cfg):
 
     audio_tf = tf.convert_to_tensor([audio_np], dtype=tf.float32)
     
-    # 実際のf0とloudnessを計算
     try:
         f0_start_time = time.time()
         spectral_ops.reset_crepe()

@@ -20,3 +20,4 @@ wandb
 !environments/cpu/.env
 !environments/gpu/.env
 environments/dev
+outputs/*
