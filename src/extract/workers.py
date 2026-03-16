@@ -1,4 +1,3 @@
-import time
 import os
 import tensorflow as tf
 from datetime import datetime
@@ -11,9 +10,7 @@ def process_single_sample(params):
     """
     GPU parallel processing function 
     """
-    process_start_time = time.time()
-    
-    setup_start_time = time.time()
+
     os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
     
     parent_gpu = os.environ.get('CUDA_VISIBLE_DEVICES', '')
@@ -23,7 +20,6 @@ def process_single_sample(params):
         gpu_index = int(hashlib.md5(str(process_id).encode()).hexdigest(), 16) % len(available_gpus)
         selected_gpu = available_gpus[gpu_index]
         os.environ['CUDA_VISIBLE_DEVICES'] = selected_gpu
-        print(f"[DEBUG] Process for {params['file_id']} (PID: {process_id}) using GPU: {selected_gpu} (from {parent_gpu})")
     elif parent_gpu:
         print(f"[DEBUG] Process for {params['file_id']} using parent GPU setting: {parent_gpu}")
     else:
@@ -38,10 +34,9 @@ def process_single_sample(params):
                 tf.config.experimental.set_memory_growth(gpu, True)
         except RuntimeError as e:
             pass  
-    print(f"[DEBUG] GPU設定時間: {time.time() - setup_start_time:.3f}秒")
+
     
 
-    start_time = time.time()
     audio_np = params['audio_data']
     file_id = params['file_id']
     cfg = params['cfg']
@@ -57,13 +52,9 @@ def process_single_sample(params):
     
     # feature extraction
     if feature_type == "harmonic":
-        extraction_start_time = time.time()
-        print(f"[DEBUG] {file_id}: 特従量抽出開始")
         features_dict = extract_harmonic_distribution(audio_np, cfg)
-        print(f"[DEBUG] {file_id}: 特徴量抽出時間: {time.time() - extraction_start_time:.3f}秒")
         
         # create metadata
-        processing_time = time.time() - start_time
         metadata = {
             "file_id": file_id,
             "instrument_family": params['instrument_family'],
@@ -79,7 +70,6 @@ def process_single_sample(params):
             },
             "feature_type": feature_type,
             "processed_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "processing_time": processing_time,
             "gpu_used": os.environ.get('CUDA_VISIBLE_DEVICES', 'unknown')
         }
         
@@ -94,7 +84,5 @@ def process_single_sample(params):
     
 
     cleanup_tensorflow_memory()
-    total_process_time = time.time() - process_start_time
-    print(f"[DEBUG] プロセス {params['file_id']} 完了: 合計時間 {total_process_time:.3f}秒")
         
     return result

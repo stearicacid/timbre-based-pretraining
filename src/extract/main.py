@@ -3,11 +3,11 @@ import tensorflow as tf
 from tqdm import tqdm
 import hydra
 from omegaconf import DictConfig, OmegaConf
-import time
 import multiprocessing as mp
+import traceback
 
 from utils.logging import logger
-from extract.dataset import CustomNSynthTfds
+from extract.dataset import NSynthTfds
 from extract.workers import process_single_sample
 from extract.save import save_results
 
@@ -19,26 +19,21 @@ def _select(cfg: DictConfig, key: str, default=None):
 
 def extract_nsynth_features(cfg, split="train", feature_type="harmonic", max_samples=None, workers_per_gpu=None):
     """
-    拡張版メモリ管理機能付きGPU並列処理関数（修正版）
+    extract harmonic distribution and metadata from NSynth dataset using GPU parallel processing
     """
-    print(f"[DEBUG] extract_nsynth_features 開始")
     
     output_root = _select(cfg, "paths.output_root", getattr(cfg, "output_dir", "outputs/extract"))
     output_dir = os.path.join(output_root, split)
     os.makedirs(output_dir, exist_ok=True)
-    
-    start_time_total = time.time()
+
     logger.info(f"Starting EXTENDED GPU-PARALLEL NSynth processing ({split} split)")
     
-    # 【修正】親プロセスのGPU設定を取得
     parent_gpu = os.environ.get('CUDA_VISIBLE_DEVICES', '')
     if parent_gpu:
         logger.info(f"Using parent GPU setting: {parent_gpu}")
-        # 親プロセスで設定されているGPUを使用
         gpu_ids = [int(gpu_id.strip()) for gpu_id in parent_gpu.split(',')]
         num_physical_gpus = len(gpu_ids)
     else:
-        # 親プロセスでGPU設定がない場合は物理GPUを検出
         physical_gpus = tf.config.list_physical_devices('GPU')
         num_physical_gpus = len(physical_gpus)
         gpu_ids = list(range(num_physical_gpus))
@@ -55,8 +50,8 @@ def extract_nsynth_features(cfg, split="train", feature_type="harmonic", max_sam
     total_workers = num_physical_gpus * workers_per_gpu
     logger.info(f"Starting {workers_per_gpu} workers per GPU, for a total of {total_workers} workers.")
 
-    # データセットの準備
-    data_provider = CustomNSynthTfds(
+    # get dataset
+    data_provider = NSynthTfds(
         name=cfg.dataset.name,
         split=split,
         data_dir=_select(cfg, "dataset.data_dir", None),
@@ -84,12 +79,11 @@ def extract_nsynth_features(cfg, split="train", feature_type="harmonic", max_sam
     existing_files = {f[8:-4] for f in os.listdir(output_dir) if f.startswith('feature_') and f.endswith('.npy')}
     logger.info(f"Found {len(existing_files)} existing processed files.")
     
-    # タスクリストを事前に準備
+    # tasks to process
     tasks_to_process = []
     sample_count = 0
     
     logger.info("Preparing task list...")
-    task_prep_start_time = time.time()
     for batch in dataset.take((max_samples + batch_size - 1) // batch_size):
         if sample_count >= max_samples:
             break
@@ -129,14 +123,12 @@ def extract_nsynth_features(cfg, split="train", feature_type="harmonic", max_sam
                 'cfg': cfg,
                 'feature_type': feature_type,
                 'output_dir': output_dir,
-                # 【修正】親プロセスのGPU設定がある場合は削除、ない場合のみ設定
                 'gpu_id': gpu_ids[sample_count % num_physical_gpus] if not parent_gpu else None
             }
             
             tasks_to_process.append(params)
             sample_count += 1
-    
-    print(f"[DEBUG] タスク準備時間: {time.time() - task_prep_start_time:.3f}秒")
+
     logger.info(f"Prepared {len(tasks_to_process)} tasks for processing")
     
     all_paths = {
@@ -146,20 +138,17 @@ def extract_nsynth_features(cfg, split="train", feature_type="harmonic", max_sam
     
     completed_tasks = 0
     failed_tasks = 0
-    
-    # 【変更】バッチ保存用の設定
+
     save_batch_size = _select(cfg, "runtime.save_batch_size", None)
     SAVE_BATCH_SIZE = save_batch_size or (workers_per_gpu * num_physical_gpus)
     results_batch = []
 
     try:
-        pool_start_time = time.time()
         with mp.Pool(
             processes=total_workers,
             maxtasksperchild=_select(cfg, "runtime.multiprocessing.pool.maxtasksperchild", 1),
         ) as pool:
             logger.info("Starting parallel processing with ProcessPool...")
-            print(f"[DEBUG] プールの開始時間: {time.time() - pool_start_time:.3f}秒")
 
             with tqdm(total=len(tasks_to_process), desc="Processing samples") as pbar:
                 for result in pool.imap_unordered(
@@ -168,14 +157,13 @@ def extract_nsynth_features(cfg, split="train", feature_type="harmonic", max_sam
                     chunksize=_select(cfg, "runtime.multiprocessing.pool.chunksize", 1),
                 ):
                     if result and result["status"] == "success":
-                        results_batch.append(result) # 結果をバッチに追加
+                        results_batch.append(result) 
                         completed_tasks += 1
                     else:
                         logger.error(f"Task failed: {result.get('file_id', 'unknown')}: {result.get('error', 'unknown error')}")
                         failed_tasks += 1
                     pbar.update(1)
 
-                    # 【追加】バッチサイズに達したら保存
                     if len(results_batch) >= SAVE_BATCH_SIZE:
                         logger.info(f"Saving batch of {len(results_batch)} files...")
                         save_results(results_batch, output_dir, all_paths)
@@ -183,19 +171,15 @@ def extract_nsynth_features(cfg, split="train", feature_type="harmonic", max_sam
 
     except KeyboardInterrupt:
         logger.info("Received interrupt signal. Shutting down...")
-    except Exception as e:
-        import traceback
+    except Exception as e:        
         logger.error(f"Error in processing: {e}\n{traceback.format_exc()}")
     finally:
-        # 【追加】ループ終了後、残りの結果を保存
         if results_batch:
             logger.info(f"Saving final batch of {len(results_batch)} files...")
             save_results(results_batch, output_dir, all_paths)
             results_batch.clear()
 
-    processing_time = time.time() - start_time_total
     logger.info(f"EXTENDED processing completed: {completed_tasks} successful, {failed_tasks} failed")
-    logger.info(f"Total processing time: {processing_time:.2f} seconds")
     
     # 既存ファイルのパスも追加
     for file_id in existing_files:
