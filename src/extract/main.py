@@ -4,13 +4,15 @@ from tqdm import tqdm
 import hydra
 from omegaconf import DictConfig, OmegaConf
 import multiprocessing as mp
-import traceback
+import logging
 
-from utils.logging import logger
+from utils.logging import setup_logging
 from extract.dataset import NSynthTfds
 from extract.workers import process_single_sample
 from extract.save import save_results
 
+logger = logging.getLogger(__name__)
+setup_logging()
 
 def _select(cfg: DictConfig, key: str, default=None):
     """Safely fetch nested config values with a default."""
@@ -64,8 +66,8 @@ def extract_nsynth_features(cfg, split="train", feature_type="harmonic", max_sam
         batch_size = max(1, num_physical_gpus)
         dataset = data_provider.get_batch(batch_size=batch_size, shuffle=False)
         logger.info("Successfully loaded NSynth dataset")
-    except Exception as e:
-        logger.error(f"Failed to load NSynth dataset: {e}")
+    except Exception:
+        logger.exception(f"Failed to load NSynth dataset")
         raise
     
     family_names = ['bass', 'brass', 'flute', 'guitar', 'keyboard', 
@@ -160,7 +162,7 @@ def extract_nsynth_features(cfg, split="train", feature_type="harmonic", max_sam
                         results_batch.append(result) 
                         completed_tasks += 1
                     else:
-                        logger.error(f"Task failed: {result.get('file_id', 'unknown')}: {result.get('error', 'unknown error')}")
+                        logger.warning(f"Task failed: {result.get('file_id', 'unknown')}: {result.get('error', 'unknown error')}")
                         failed_tasks += 1
                     pbar.update(1)
 
@@ -171,8 +173,10 @@ def extract_nsynth_features(cfg, split="train", feature_type="harmonic", max_sam
 
     except KeyboardInterrupt:
         logger.info("Received interrupt signal. Shutting down...")
-    except Exception as e:        
-        logger.error(f"Error in processing: {e}\n{traceback.format_exc()}")
+        raise
+    except Exception:
+        logger.exception(f"Unexpected error during parallel processing")
+        raise
     finally:
         if results_batch:
             logger.info(f"Saving final batch of {len(results_batch)} files...")
