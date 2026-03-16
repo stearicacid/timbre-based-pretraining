@@ -1,23 +1,15 @@
 import os
-import numpy as np
 import tensorflow as tf
 from tqdm import tqdm
-import logging
-import warnings
 import hydra
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 import time
 import multiprocessing as mp
-import json
-from datetime import datetime
-import gc
-import psutil
 
-import ddsp
-from ddsp.training import models, preprocessing, decoders
-from ddsp import spectral_ops
-from ddsp.training import train_util, data
-import tensorflow_datasets as tfds
+from ..utils.logging import logger
+from .dataset import CustomNSynthTfds
+from .workers import process_single_sample
+from .save import save_results
 
 def extract_nsynth_features(cfg, split="train", feature_type="harmonic", max_samples=None, workers_per_gpu=None):
     """
@@ -156,7 +148,7 @@ def extract_nsynth_features(cfg, split="train", feature_type="harmonic", max_sam
             print(f"[DEBUG] プールの開始時間: {time.time() - pool_start_time:.3f}秒")
 
             with tqdm(total=len(tasks_to_process), desc="Processing samples") as pbar:
-                for result in pool.imap_unordered(process_single_sample_gpu_extended, tasks_to_process, chunksize=1):
+                for result in pool.imap_unordered(process_single_sample, tasks_to_process, chunksize=1):
                     if result and result["status"] == "success":
                         results_batch.append(result) # 結果をバッチに追加
                         completed_tasks += 1
@@ -168,7 +160,7 @@ def extract_nsynth_features(cfg, split="train", feature_type="harmonic", max_sam
                     # 【追加】バッチサイズに達したら保存
                     if len(results_batch) >= SAVE_BATCH_SIZE:
                         logger.info(f"Saving batch of {len(results_batch)} files...")
-                        save_results_batch(results_batch, output_dir, all_paths)
+                        save_results(results_batch, output_dir, all_paths)
                         results_batch.clear()
 
     except KeyboardInterrupt:
@@ -180,7 +172,7 @@ def extract_nsynth_features(cfg, split="train", feature_type="harmonic", max_sam
         # 【追加】ループ終了後、残りの結果を保存
         if results_batch:
             logger.info(f"Saving final batch of {len(results_batch)} files...")
-            save_results_batch(results_batch, output_dir, all_paths)
+            save_results(results_batch, output_dir, all_paths)
             results_batch.clear()
 
     processing_time = time.time() - start_time_total
@@ -206,7 +198,7 @@ def main(cfg: DictConfig):
     
     if getattr(cfg, 'save_extended_features', False):
         logger.info("Using extended feature extraction with memory management")
-        extract_nsynth_data_gpu_parallel_extended(
+        extract_nsynth_features(
             cfg,
             cfg.split,
             cfg.feature_type,

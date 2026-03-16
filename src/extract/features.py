@@ -1,25 +1,16 @@
 import os
 import numpy as np
 import tensorflow as tf
-from tqdm import tqdm
-import logging
-import warnings
-import hydra
-from omegaconf import DictConfig, OmegaConf
 import time
-import multiprocessing as mp
-import json
-from datetime import datetime
-import gc
-import psutil
 
 import ddsp
 from ddsp.training import models, preprocessing, decoders
 from ddsp import spectral_ops
-from ddsp.training import train_util, data
-import tensorflow_datasets as tfds
+from ddsp.training import train_util
 
-def extract_harmonic_distribution_with_controls(audio_np, cfg):
+from ..utils.utils import cleanup_tensorflow_memory
+
+def extract_harmonic_distribution(audio_np, cfg):
     """
     harmonic_distribution に加えて、F0と音量も返すように修正した関数
     """
@@ -45,7 +36,6 @@ def extract_harmonic_distribution_with_controls(audio_np, cfg):
         loudness_db_tf = spectral_ops.compute_loudness(audio_tf, sample_rate)
         print(f"[DEBUG] F0/Loudness計算時間: {time.time() - f0_start_time:.3f}秒")
     except Exception as e:
-        logger.warning(f"Feature extraction error: {e}")
         time_steps = 1000
         f0_hz_tf = tf.ones([1, time_steps], dtype=tf.float32) * 440.0
         loudness_db_tf = tf.ones([1, time_steps], dtype=tf.float32) * -30.0
