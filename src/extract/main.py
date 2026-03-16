@@ -1,0 +1,219 @@
+import os
+import numpy as np
+import tensorflow as tf
+from tqdm import tqdm
+import logging
+import warnings
+import hydra
+from omegaconf import DictConfig, OmegaConf
+import time
+import multiprocessing as mp
+import json
+from datetime import datetime
+import gc
+import psutil
+
+import ddsp
+from ddsp.training import models, preprocessing, decoders
+from ddsp import spectral_ops
+from ddsp.training import train_util, data
+import tensorflow_datasets as tfds
+
+def extract_nsynth_features(cfg, split="train", feature_type="harmonic", max_samples=None, workers_per_gpu=None):
+    """
+    拡張版メモリ管理機能付きGPU並列処理関数（修正版）
+    """
+    print(f"[DEBUG] extract_nsynth_features 開始")
+    
+    output_dir = os.path.join(cfg.output_dir, split)
+    os.makedirs(output_dir, exist_ok=True)
+    
+    start_time_total = time.time()
+    logger.info(f"Starting EXTENDED GPU-PARALLEL NSynth processing ({split} split)")
+    
+    # 【修正】親プロセスのGPU設定を取得
+    parent_gpu = os.environ.get('CUDA_VISIBLE_DEVICES', '')
+    if parent_gpu:
+        logger.info(f"Using parent GPU setting: {parent_gpu}")
+        # 親プロセスで設定されているGPUを使用
+        gpu_ids = [int(gpu_id.strip()) for gpu_id in parent_gpu.split(',')]
+        num_physical_gpus = len(gpu_ids)
+    else:
+        # 親プロセスでGPU設定がない場合は物理GPUを検出
+        physical_gpus = tf.config.list_physical_devices('GPU')
+        num_physical_gpus = len(physical_gpus)
+        gpu_ids = list(range(num_physical_gpus))
+    
+    if num_physical_gpus == 0:
+        logger.error("No GPUs found.")
+        return {}
+
+    logger.info(f"Using {num_physical_gpus} GPU(s): {gpu_ids}")
+
+    if workers_per_gpu is None:
+        workers_per_gpu = getattr(cfg, 'workers_per_gpu', 2)
+    
+    total_workers = num_physical_gpus * workers_per_gpu
+    logger.info(f"Starting {workers_per_gpu} workers per GPU, for a total of {total_workers} workers.")
+
+    # データセットの準備
+    data_provider = CustomNSynthTfds(
+        name=cfg.dataset.name,
+        split=split,
+        data_dir=cfg.dataset.data_dir,
+        sample_rate=cfg.audio.sample_rate,
+        frame_rate=250
+    )
+
+    try:
+        batch_size = max(1, num_physical_gpus)
+        dataset = data_provider.get_batch(batch_size=batch_size, shuffle=False)
+        logger.info("Successfully loaded NSynth dataset")
+    except Exception as e:
+        logger.error(f"Failed to load NSynth dataset: {e}")
+        raise
+    
+    family_names = ['bass', 'brass', 'flute', 'guitar', 'keyboard', 
+                    'mallet', 'organ', 'reed', 'string', 'synth_lead', 'vocal']
+
+    if max_samples is None:
+        max_samples = getattr(cfg.dataset, 'max_samples', 1000000)
+    
+    existing_files = {f[8:-4] for f in os.listdir(output_dir) if f.startswith('feature_') and f.endswith('.npy')}
+    logger.info(f"Found {len(existing_files)} existing processed files.")
+    
+    # タスクリストを事前に準備
+    tasks_to_process = []
+    sample_count = 0
+    
+    logger.info("Preparing task list...")
+    task_prep_start_time = time.time()
+    for batch in dataset.take((max_samples + batch_size - 1) // batch_size):
+        if sample_count >= max_samples:
+            break
+
+        audio_tf = batch['audio']
+        
+        for j in range(audio_tf.shape[0]):
+            if sample_count >= max_samples:
+                break
+            
+            current_file_id = f"tfds_{split}_{sample_count}"
+            
+            if current_file_id in existing_files:
+                sample_count += 1
+                continue
+
+            audio_np = audio_tf[j].numpy()
+            
+            family_id = batch['instrument_family'][j].numpy() if 'instrument_family' in batch else -1
+            instrument_family = family_names[family_id] if 0 <= family_id < len(family_names) else f"family_{family_id}"
+            
+            source_index = batch['instrument_source'][j].numpy() if 'instrument_source' in batch else -1
+            source_names = ['acoustic', 'electronic', 'synthetic']
+            instrument_source = source_names[source_index] if 0 <= source_index < len(source_names) else f"source_{source_index}"
+
+            pitch = batch['pitch'][j].numpy() if 'pitch' in batch else -1
+            
+            params = {
+                'audio_data': audio_np,
+                'file_id': current_file_id,
+                'instrument_family': instrument_family,
+                'instrument_name': f"instrument_{family_id}",
+                'label': family_id,
+                'instrument_source': instrument_source,
+                'instrument_source_idx': int(source_index),
+                'pitch': int(pitch),
+                'cfg': cfg,
+                'feature_type': feature_type,
+                'output_dir': output_dir,
+                # 【修正】親プロセスのGPU設定がある場合は削除、ない場合のみ設定
+                'gpu_id': gpu_ids[sample_count % num_physical_gpus] if not parent_gpu else None
+            }
+            
+            tasks_to_process.append(params)
+            sample_count += 1
+    
+    print(f"[DEBUG] タスク準備時間: {time.time() - task_prep_start_time:.3f}秒")
+    logger.info(f"Prepared {len(tasks_to_process)} tasks for processing")
+    
+    all_paths = {
+        'feature_paths': [], 'f0_paths': [], 'loudness_paths': [],
+        'amps_paths': [], 'noise_paths': [], 'f0_confidence_paths': [], 'label_paths': []
+    }
+    
+    completed_tasks = 0
+    failed_tasks = 0
+    
+    # 【変更】バッチ保存用の設定
+    SAVE_BATCH_SIZE = workers_per_gpu * num_physical_gpus # ワーカーの総数ごとに保存
+    results_batch = []
+
+    try:
+        pool_start_time = time.time()
+        with mp.Pool(processes=total_workers, maxtasksperchild=1) as pool:
+            logger.info("Starting parallel processing with ProcessPool...")
+            print(f"[DEBUG] プールの開始時間: {time.time() - pool_start_time:.3f}秒")
+
+            with tqdm(total=len(tasks_to_process), desc="Processing samples") as pbar:
+                for result in pool.imap_unordered(process_single_sample_gpu_extended, tasks_to_process, chunksize=1):
+                    if result and result["status"] == "success":
+                        results_batch.append(result) # 結果をバッチに追加
+                        completed_tasks += 1
+                    else:
+                        logger.error(f"Task failed: {result.get('file_id', 'unknown')}: {result.get('error', 'unknown error')}")
+                        failed_tasks += 1
+                    pbar.update(1)
+
+                    # 【追加】バッチサイズに達したら保存
+                    if len(results_batch) >= SAVE_BATCH_SIZE:
+                        logger.info(f"Saving batch of {len(results_batch)} files...")
+                        save_results_batch(results_batch, output_dir, all_paths)
+                        results_batch.clear()
+
+    except KeyboardInterrupt:
+        logger.info("Received interrupt signal. Shutting down...")
+    except Exception as e:
+        import traceback
+        logger.error(f"Error in processing: {e}\n{traceback.format_exc()}")
+    finally:
+        # 【追加】ループ終了後、残りの結果を保存
+        if results_batch:
+            logger.info(f"Saving final batch of {len(results_batch)} files...")
+            save_results_batch(results_batch, output_dir, all_paths)
+            results_batch.clear()
+
+    processing_time = time.time() - start_time_total
+    logger.info(f"EXTENDED processing completed: {completed_tasks} successful, {failed_tasks} failed")
+    logger.info(f"Total processing time: {processing_time:.2f} seconds")
+    
+    # 既存ファイルのパスも追加
+    for file_id in existing_files:
+        all_paths['feature_paths'].append(os.path.join(output_dir, f"feature_{file_id}.npy"))
+        all_paths['f0_paths'].append(os.path.join(output_dir, f"f0_{file_id}.npy"))
+        all_paths['loudness_paths'].append(os.path.join(output_dir, f"loudness_{file_id}.npy"))
+        all_paths['amps_paths'].append(os.path.join(output_dir, f"amps_{file_id}.npy"))
+        all_paths['noise_paths'].append(os.path.join(output_dir, f"noise_{file_id}.npy"))
+        all_paths['f0_confidence_paths'].append(os.path.join(output_dir, f"f0_confidence_{file_id}.npy"))
+        all_paths['label_paths'].append(os.path.join(output_dir, f"label_{file_id}.npy"))
+        
+    return all_paths
+
+
+@hydra.main(config_path="../conf", config_name="config")
+def main(cfg: DictConfig):
+    mp.set_start_method('spawn', force=True)
+    
+    if getattr(cfg, 'save_extended_features', False):
+        logger.info("Using extended feature extraction with memory management")
+        extract_nsynth_data_gpu_parallel_extended(
+            cfg,
+            cfg.split,
+            cfg.feature_type,
+            cfg.max_samples if hasattr(cfg, 'max_samples') else None,
+            cfg.workers_per_gpu if hasattr(cfg, 'workers_per_gpu') else None
+        )
+
+if __name__ == "__main__":
+    tf.get_logger().setLevel('ERROR')
+    main()

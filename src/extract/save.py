@@ -3,9 +3,7 @@ import numpy as np
 import time
 import json
 
-
-
-def save_results_batch(results_list, output_dir, all_paths):
+def save_results(results_list, output_dir, all_paths):
     """
     結果のバッチをファイルに保存するヘルパー関数
     """
@@ -70,4 +68,4 @@ def save_results_batch(results_list, output_dir, all_paths):
     
     total_save_time = time.time() - save_start_time
     print(f"[DEBUG] バッチ保存完了: 合計時間 {total_save_time:.2f}秒, 平均 {total_save_time/len(results_list):.3f}秒/ファイル")
-    logger.info(f"Batch save took: {total_save_time:.2f} seconds")
+    # logger.info(f"Batch save took: {total_save_time:.2f} seconds")
