@@ -1,8 +1,7 @@
 import torch
 import numpy as np
-from typing import Tuple, Optional, Dict, Any
+from typing import Tuple, Optional
 import logging
-from pathlib import Path
 import json
 
 logger = logging.getLogger(__name__)
@@ -45,25 +44,7 @@ class DataNormalizer:
         正規化済み分布 + 合計 → ロジット
         """
         y = normalized * sum_before
-        return self.inv_exp_sigmoid(y)
-
-        # if hasattr(feature_range, '__iter__') and not isinstance(feature_range, (str, tuple)):
-        #     self.feature_range = tuple(feature_range)
-        # else:
-        #     self.feature_range = feature_range
-            
-        # if hasattr(outlier_percentiles, '__iter__') and not isinstance(outlier_percentiles, (str, tuple)):
-        #     self.outlier_percentiles = tuple(outlier_percentiles)
-        # else:
-        #     self.outlier_percentiles = outlier_percentiles
-            
-        # self.epsilon = epsilon
-        # self.clip_outliers = clip_outliers
-        
-        # # 統計値を保存
-        # self.stats = {}
-        # self.is_fitted = False
-        
+        return self.inv_exp_sigmoid(y)        
         
     def fit(self, data: np.ndarray) -> 'DataNormalizer':
         logger.info(f"Data shape: {data.shape}")
@@ -72,16 +53,7 @@ class DataNormalizer:
         sample_indices = np.random.choice(len(data), sample_size, replace=False)
         sample_data = data[sample_indices]
             
-        normalized_samples = []
-        sum_before_samples = []
-            
-        for i in range(len(sample_data)):
-            normalized, sum_before = self.normalize(sample_data[i:i+1])
-            normalized_samples.append(normalized)
-            sum_before_samples.append(sum_before)
-            
-        all_normalized = np.concatenate(normalized_samples, axis=0)
-        all_sum_before = np.concatenate(sum_before_samples, axis=0)
+        all_normalized, all_sum_before = self.normalize(sample_data)
         
         self.stats['normalized_mean'] = np.mean(all_normalized, axis=0)
         self.stats['normalized_std'] = np.std(all_normalized, axis=0)
@@ -99,12 +71,10 @@ class DataNormalizer:
         if not self.is_fitted:
             raise ValueError("Normalizer must be fitted before transform")
             
-
         normalized, sum_before = self.normalize(data)
-            
-        if hasattr(self, 'sum_before_cache'):
-            data_hash = hash(data.tobytes())
-            self.sum_before_cache[data_hash] = sum_before
+         
+        data_hash = hash(data.tobytes())
+        self.sum_before_cache[data_hash] = sum_before
         
         if return_sum_before:
             return normalized, sum_before
@@ -171,27 +141,16 @@ class DataNormalizer:
         with open(filepath, 'r') as f:
             save_data = json.load(f)
         
+        ddsp_params = save_data['ddsp_params']
         normalizer = cls(
-            feature_range=tuple(save_data['feature_range']),
-            epsilon=save_data['epsilon'],
-            clip_outliers=save_data['clip_outliers'],
-            outlier_percentiles=tuple(save_data['outlier_percentiles'])
+            exponent=ddsp_params['exponent'],
+            max_value=ddsp_params['max_value'],
+            threshold=ddsp_params['threshold'],
+            eps=ddsp_params['eps']
         )
-        
         normalizer.stats = {k: np.array(v) if isinstance(v, list) else v 
                            for k, v in save_data['stats'].items()}
         normalizer.is_fitted = save_data['is_fitted']
-        
-        if 'ddsp_params' in save_data:
-            ddsp_params = save_data['ddsp_params']
-            normalizer = DataNormalizer(
-                exponent=ddsp_params['exponent'],
-                max_value=ddsp_params['max_value'],
-                threshold=ddsp_params['threshold'],
-                eps=ddsp_params['eps']
-            )
-        else:
-            normalizer = DataNormalizer()
         normalizer.sum_before_cache = {}
         
         logger.info(f"Normalizer loaded from {filepath}")
