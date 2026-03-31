@@ -8,7 +8,7 @@ class HarmonicVAE(nn.Module):
     def __init__(
         self,
         input_dim: int = 45,
-        latent_dim: int = 10,
+        latent_dim: int = 24,
         hidden_dims: Optional[List[int]] = None,
         beta: float = 1.0,
         loss: Optional[dict] = None,
@@ -73,12 +73,8 @@ class HarmonicVAE(nn.Module):
         # Initialize weights
         self._initialize_weights()
 
-        
-        logger.info(f"Final encoder: {self.encoder}")
-        logger.info(f"Final decoder: {self.decoder}")
-
     def _initialize_weights(self):
-        """全ての線形層をXavier初期化"""
+        """Initialize weights with Xavier initialization"""
             
         for module in self.modules():
             if isinstance(module, nn.Linear):

@@ -223,8 +223,6 @@ class Trainer:
         )
         self.logger.info("Training completed. Final model saved.")
 
-        # self._run_final_analysis()
-
         if self.cfg.logging.wandb.enabled:
             wandb.finish()
 
@@ -414,27 +412,3 @@ class Trainer:
                 self.logger.info(f"Epoch {epoch+1}: β = {current_beta:.4f} (STABLE)")
             return current_beta
         return self.model.current_beta
-
-    # def _run_final_analysis(self) -> None:
-    #     try:
-    #         self.logger.info("Generating final analysis...")
-    #         self.tradeoff_analysis.plot_tradeoff_curves(
-    #             str(self.output_dir / "tradeoff_curves.png")
-    #         )
-    #         optimal_params = self.tradeoff_analysis.find_optimal_hyperparameters()
-
-    #         self.logger.info("=== Final Analysis Results ===")
-    #         if optimal_params:
-    #             self.logger.info(f"Optimal epoch: {optimal_params.get('epoch', 'N/A')}")
-    #             self.logger.info(
-    #                 "Optimal reconstruction loss: "
-    #                 f"{optimal_params.get('mean_recon_loss', 'N/A'):.4f}"
-    #             )
-    #             self.logger.info(
-    #                 f"Optimal silhouette score: {optimal_params.get('silhouette_score', 'N/A'):.4f}"
-    #             )
-    #             self.logger.info(f"Optimal ARI: {optimal_params.get('ari', 'N/A'):.4f}")
-    #         else:
-    #             self.logger.info("No optimal parameters found")
-    #     except Exception as e:
-    #         self.logger.warning(f"Error in final analysis: {e}")
