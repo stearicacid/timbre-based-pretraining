@@ -25,8 +25,8 @@ class HarmonicDataset(Dataset):
         cache_features: bool = True,
         verify_data: bool = True,
         normalizer: Optional[DataNormalizer] = None,
-        pool_time_dim: bool = True,  # 時間平均化を制御するフラグを追加
-        eager_cache: bool = False    # 追加: 起動時に全データをメモリへ読み込み
+        pool_time_dim: bool = True,  
+        eager_cache: bool = False   
     ):
         """
         Dataset for harmonic features from prepare_dataset.py output.
@@ -221,27 +221,6 @@ class HarmonicDataset(Dataset):
             
             # Convert to float32 BEFORE normalization
             features = features.astype(np.float32)
-            
-            # 正規化を適用（設定されている場合）
-            # NOTE: 正規化処理をコメントアウト
-            # if self.normalizer is not None:
-            #     original_shape = features.shape
-            #     if len(original_shape) == 1:
-            #         # 1D配列の場合（時間平均化済み）のみ正規化を適用
-            #         features = self.normalizer.transform(features.reshape(1, -1)).flatten()
-            #         print(f"DEBUG: Applied normalization to 1D features, shape: {features.shape}")
-            #     else: 
-            #         # 2D配列の場合（時間次元あり）は正規化をスキップ
-            #         print(f"DEBUG: Skipping normalization for 2D features, shape: {features.shape}")
-            #         pass  # 正規化をスキップ
-            #     
-            #     # 正規化後も確実にfloat32にする
-            #     features = features.astype(np.float32)
-            # else:
-            #     print(f"DEBUG: No normalizer provided, features shape: {features.shape}")
-            
-            # 正規化なしでのデバッグ情報
-            # print(f"DEBUG: No normalization applied, features shape: {features.shape}")
 
             # Cache if enabled
             if self.cache_features:

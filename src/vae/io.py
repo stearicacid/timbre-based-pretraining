@@ -1,4 +1,3 @@
-import hydra
 from omegaconf import DictConfig, OmegaConf
 import torch
 import torch.nn as nn
@@ -6,13 +5,10 @@ import wandb
 import logging
 import os
 from pathlib import Path
-from typing import Tuple
-
-from src.utils.training_metrics import TrainingMetrics
-from src.utils.tradeoff_analysis import TradeoffAnalysis
+import wandb
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
-
 
 def setup_device(cfg: DictConfig) -> torch.device:
     """Setup device based on configuration."""
@@ -30,31 +26,24 @@ def setup_device(cfg: DictConfig) -> torch.device:
     
     return device
 
-def setup_wandb_for_sweep(cfg: DictConfig):
+def setup_wandb(cfg: DictConfig):
     """Sweep用のWandB初期化"""
     if cfg.logging.wandb.enabled:
-        import wandb
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
-        if wandb.run is None:
-            from datetime import datetime
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            
-            base_name = getattr(cfg.logging.wandb, 'name', None) or cfg.experiment_name
-            run_name = f"{base_name}_{timestamp}"
-            
-            wandb.init(
-                project=cfg.logging.wandb.project,
-                entity=cfg.logging.wandb.get('entity', None),
-                name=run_name,
-                config=OmegaConf.to_container(cfg, resolve=True),
-                tags=cfg.logging.wandb.get('tags', []),
-                notes=cfg.logging.wandb.get('notes', ''),
-                mode=cfg.logging.wandb.get('mode', 'online')
-            )
-            logger.info(f"WandB run name: {run_name}")
-        else:
-            logger.info(f"WandB sweep run: {wandb.run.name}")
-            wandb.config.update(OmegaConf.to_container(cfg, resolve=True), allow_val_change=True)
+        base_name = getattr(cfg.logging.wandb, 'name', None) or cfg.experiment_name
+        run_name = f"{base_name}_{timestamp}"
+        
+        wandb.init(
+            project=cfg.logging.wandb.project,
+            entity=cfg.logging.wandb.get('entity', None),
+            name=run_name,
+            config=OmegaConf.to_container(cfg, resolve=True),
+            tags=cfg.logging.wandb.get('tags', []),
+            notes=cfg.logging.wandb.get('notes', ''),
+            mode=cfg.logging.wandb.get('mode', 'online')
+        )
+        logger.info(f"WandB run name: {run_name}")
 
 
 def save_checkpoint(
@@ -99,11 +88,3 @@ def save_checkpoint(
         )
         artifact.add_file(str(filepath))
         wandb.log_artifact(artifact)
-
-def integrate_analysis_metrics(cfg: DictConfig) -> Tuple[TrainingMetrics, TradeoffAnalysis]:
-    """分析メトリクスの初期化"""
-    training_metrics = TrainingMetrics()
-    tradeoff_analysis = TradeoffAnalysis()
-    
-    logger.info("Analysis metrics initialized")
-    return training_metrics, tradeoff_analysis

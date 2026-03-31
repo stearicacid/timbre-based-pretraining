@@ -16,10 +16,9 @@ from src.utils.logging import log_model_info
 from src.vae.dataset import create_dataloaders
 from src.vae.hooks import EMAOptimizer, EarlyStopping
 from src.vae.io import (
-    integrate_analysis_metrics,
     save_checkpoint,
     setup_device,
-    setup_wandb_for_sweep,
+    setup_wandb,
 )
 from src.vae.model import HarmonicVAE
 
@@ -66,7 +65,7 @@ class Trainer:
     def from_config(cls, cfg: DictConfig, logger: Optional[logging.Logger] = None) -> "Trainer":
         logger = logger or logging.getLogger(__name__)
 
-        setup_wandb_for_sweep(cfg)
+        setup_wandb(cfg)
         device = setup_device(cfg)
 
         logger.info("Creating dataloaders...")
@@ -149,7 +148,6 @@ class Trainer:
             if cfg.logging.wandb.enabled:
                 wandb.config.update({"ema_enabled": False})
 
-        training_metrics, tradeoff_analysis = integrate_analysis_metrics(cfg)
         loss_weights = cls._resolve_loss_weights(cfg)
         output_dir = Path(os.getcwd())
 
@@ -167,8 +165,6 @@ class Trainer:
             beta_scheduler=beta_scheduler,
             ema=ema,
             output_dir=output_dir,
-            training_metrics=training_metrics,
-            tradeoff_analysis=tradeoff_analysis,
             loss_weights=loss_weights,
         )
 
