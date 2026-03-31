@@ -12,7 +12,7 @@ from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
 from src.utils.beta_scheduler import BetaScheduler
-from src.utils.logging_utils import log_model_info
+from src.utils.logging import log_model_info
 from src.vae.dataset import create_dataloaders
 from src.vae.hooks import EMAOptimizer, EarlyStopping
 from src.vae.io import (
