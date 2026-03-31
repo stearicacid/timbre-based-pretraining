@@ -40,8 +40,6 @@ class Trainer:
         beta_scheduler: Optional[BetaScheduler],
         ema: Optional[EMAOptimizer],
         output_dir: Path,
-        training_metrics,
-        tradeoff_analysis,
         loss_weights: Optional[dict],
     ):
         self.cfg = cfg
@@ -57,8 +55,6 @@ class Trainer:
         self.ema = ema
         self.best_val_loss = float("inf")
         self.output_dir = output_dir
-        self.training_metrics = training_metrics
-        self.tradeoff_analysis = tradeoff_analysis
         self.loss_weights = loss_weights
 
     @classmethod

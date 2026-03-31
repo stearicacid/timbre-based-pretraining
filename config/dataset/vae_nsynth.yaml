@@ -30,11 +30,10 @@ temporal_pooling: "mean"  # How to handle time dimension: 'mean', 'max', or null
 # 正規化設定を追加
 normalization:
   enabled: true
-  method: "ddsp"  # "standardize", "minmax", "robust", "none"
-  feature_range: [0.0, 1.0]  # MinMaxスケーリング用
-  epsilon: 1e-8
-  clip_outliers: false
-  outlier_percentiles: [1.0, 99.0]
-  max_samples: 1000000  # 統計計算に使用する最大サンプル数
-  save_normalizer: true  # 正規化器を保存するか
+  exponent: 10.0
+  max_value: 2.0
+  threshold: 1e-7
+  eps: 1e-8
+  max_samples: 1000000  
+  save_normalizer: true  
 

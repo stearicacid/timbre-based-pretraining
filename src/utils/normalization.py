@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Union
 import logging
 import json
 
@@ -67,7 +67,11 @@ class DataNormalizer:
         
         return self
     
-    def transform(self, data: np.ndarray, return_sum_before: bool = False) -> np.ndarray:
+    def transform(
+        self,
+        data: np.ndarray,
+        return_sum_before: bool = False
+    ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
         if not self.is_fitted:
             raise ValueError("Normalizer must be fitted before transform")
             
@@ -97,7 +101,11 @@ class DataNormalizer:
         return self.denormalize(data, sum_before)
 
     
-    def fit_transform(self, data: np.ndarray, return_sum_before: bool = False) -> np.ndarray:
+    def fit_transform(
+        self,
+        data: np.ndarray,
+        return_sum_before: bool = False
+    ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
         self.fit(data)
         return self.transform(data, return_sum_before=return_sum_before)
     

@@ -222,6 +222,11 @@ class HarmonicDataset(Dataset):
             # Convert to float32 BEFORE normalization
             features = features.astype(np.float32)
 
+            # Apply DDSP normalizer when enabled.
+            if self.normalizer is not None:
+                features = self.normalizer.transform(features)
+                features = features.astype(np.float32)
+
             # Cache if enabled
             if self.cache_features:
                 self.features_cache[cache_key] = features
@@ -373,8 +378,6 @@ def create_dataloaders(
     if normalization and normalization.get('enabled', False):
         logger.info("Setting up data normalization...")
         
-        # Configから正規化設定を取得
-        normalization_method = normalization.get('method', 'standardize')
         max_samples_for_norm = normalization.get('max_samples', None)
         
         # 統計計算用のサンプル数を決定（訓練データから）
@@ -407,13 +410,12 @@ def create_dataloaders(
             pin_memory=False
         )
         
-        # 正規化器設定をConfigから取得
+        # DDSP正規化器設定をConfigから取得
         normalizer_kwargs = {
-            'method': normalization_method,
-            'feature_range': normalization.get('feature_range', (0.0, 1.0)),
-            'epsilon': normalization.get('epsilon', 1e-8),
-            'clip_outliers': normalization.get('clip_outliers', False),
-            'outlier_percentiles': normalization.get('outlier_percentiles', (1.0, 99.0))
+            'exponent': normalization.get('exponent', 10.0),
+            'max_value': normalization.get('max_value', 2.0),
+            'threshold': normalization.get('threshold', 1e-7),
+            'eps': normalization.get('eps', 1e-8),
         }
         
         # 正規化器を作成してフィット
@@ -422,8 +424,6 @@ def create_dataloaders(
             max_samples=None,
             **normalizer_kwargs
         )
-        
-        logger.info(f"Normalization method: {normalizer.method}")
         logger.info(f"Normalization config: {normalizer_kwargs}")
     
     loaders = []
