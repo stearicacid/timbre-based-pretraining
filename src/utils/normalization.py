@@ -24,17 +24,17 @@ class DataNormalizer:
         self.is_fitted = False
         self.sum_before_cache = {}
         
-    def exp_sigmoid(self, x: np.ndarray) -> np.ndarray:
+    def exp_sigmoid_np(self, x: np.ndarray) -> np.ndarray:
         sigmoid_out = 1.0 / (1.0 + np.exp(-x))
         return self.max_value * (sigmoid_out ** np.log(self.exponent)) + self.threshold
     
-    def inv_exp_sigmoid(self, y: np.ndarray) -> np.ndarray:
+    def inv_exp_sigmoid_np(self, y: np.ndarray) -> np.ndarray:
         s = ((y - self.threshold) / self.max_value)**(1.0 / np.log(self.exponent))
         s = np.clip(s, self.eps, 1.0 - self.eps)
         return np.log(s / (1.0 - s))
     
     def normalize(self, logits: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        y = self.exp_sigmoid(logits)
+        y = self.exp_sigmoid_np(logits)
         sum_before = np.sum(y, axis=-1, keepdims=True)
         normalized = y / (sum_before + self.eps)
         return normalized, sum_before
@@ -44,7 +44,7 @@ class DataNormalizer:
         正規化済み分布 + 合計 → ロジット
         """
         y = normalized * sum_before
-        return self.inv_exp_sigmoid(y)        
+        return self.inv_exp_sigmoid_np(y)        
         
     def fit(self, data: np.ndarray) -> 'DataNormalizer':
         logger.info(f"Data shape: {data.shape}")
