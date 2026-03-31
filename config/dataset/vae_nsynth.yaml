@@ -12,9 +12,9 @@ mode: "train_val"  # 'train_val', 'train_only', 'test_only'
 feature_type: "harmonic"  # 'harmonic' or 'spectrogram'
 
 # Data loading settings
-batch_size: 64
+batch_size: 1024
 
-eager_cache: false
+eager_cache: true
 
 # Dataset optimization
 max_samples: null  # null for all samples, int for limit
@@ -30,7 +30,7 @@ temporal_pooling: "mean"  # How to handle time dimension: 'mean', 'max', or null
 # 正規化設定を追加
 normalization:
   enabled: true
-  method: "minmax"  # "standardize", "minmax", "robust", "none"
+  method: "ddsp"  # "standardize", "minmax", "robust", "none"
   feature_range: [0.0, 1.0]  # MinMaxスケーリング用
   epsilon: 1e-8
   clip_outliers: false

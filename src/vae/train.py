@@ -1,12 +1,9 @@
 import hydra
 from omegaconf import DictConfig, OmegaConf
 import torch
-import torch.nn as nn
 import wandb
 import logging
-import os
 from pathlib import Path
-import numpy as np
 
 from src.vae.model import HarmonicVAE
 from src.vae.dataset import create_dataloaders
@@ -76,7 +73,6 @@ def train(cfg: DictConfig) -> None:
         'input_dim': cfg.model.input_dim,
         'latent_dim': cfg.model.latent_dim,
         'hidden_dims': cfg.model.hidden_dims
-        # 'contractive_weight': cfg.model.get('contractive_weight', 0.0),  # 追加
     }
 
     if hasattr(cfg.model, 'loss'):
@@ -90,7 +86,7 @@ def train(cfg: DictConfig) -> None:
     
     model_mode = "AutoEncoder" if not model.use_kl else "VAE"
     logger.info(f"Model mode: {model_mode}")
-    # logger.info(f"Model contractive weight: {model.contractive_weight}")
+
     if model.use_kl:
         logger.info(f"Initial β value: {model.current_beta}")
     else:
@@ -103,7 +99,6 @@ def train(cfg: DictConfig) -> None:
             "model_mode": model_mode, 
             "use_kl": model.use_kl,
             "actual_latent_dim": cfg.model.latent_dim,
-            # "actual_contractive_weight": cfg.model.get('contractive_weight', 0.0),
             "actual_loss_weights": OmegaConf.to_container(cfg.model.loss.get('loss_weights', {}), resolve=True)
         })
     
@@ -270,82 +265,6 @@ def train(cfg: DictConfig) -> None:
     except Exception as e:
         logger.warning(f"Error in final analysis: {e}")
 
-# def log_reconstructions(
-#     model: nn.Module,
-#     val_loader: torch.utils.data.DataLoader,
-#     device: torch.device,
-#     epoch: int
-# ):
-#     """再構成結果をWandBにログ"""
-#     model.eval()
-#     with torch.no_grad():
-#         sample_batch = next(iter(val_loader))
-
-#         if isinstance(sample_batch, (tuple, list)):
-#             if len(sample_batch) == 2:
-#                 sample_data, _ = sample_batch  # (features, labels)
-#             else:
-#                 sample_data = sample_batch[0]
-#         else:
-#             sample_data = sample_batch
-
-#         sample_data = sample_data[:8].to(device)  # [8, 45]
-#         recon_sample, mu_sample, logvar_sample = model(sample_data)
-
-#         from src.utils.normalization import ddsp_style_normalization
-#         original_normalized = ddsp_style_normalization(sample_data[0])
-
-#         original = original_normalized.cpu().numpy() 
-#         reconstructed = recon_sample[0].cpu().numpy() 
-
-#         mode_str = "AE" if not model.use_kl else "VAE"
-#         if hasattr(model, 'use_triplet') and model.use_triplet:
-#             mode_str += "+Triplet"
-        
-#         wandb.log({
-#             'reconstructions': wandb.plot.line_series(
-#                 xs=list(range(45)),
-#                 ys=[original, reconstructed],
-#                 keys=['Original', 'Reconstructed'],
-#                 title=f"Harmonic Structure Reconstruction ({mode_str})",
-#                 xname="Harmonic Number"
-#             )
-#         })
-
-def log_latent_space(
-    model: nn.Module,
-    val_loader: torch.utils.data.DataLoader,
-    device: torch.device,
-    epoch: int
-):
-    """潜在空間の分布をWandBにログ"""
-    model.eval()
-    all_mu = []
-    
-    with torch.no_grad():
-        for batch_data in val_loader:
-            if isinstance(batch_data, (tuple, list)):
-                if len(batch_data) == 2:
-                    data, _ = batch_data  # (features, labels)
-                else:
-                    data = batch_data[0]
-            else:
-                data = batch_data
-                
-            data = data.to(device)
-            _, mu, _ = model(data)
-            all_mu.append(mu.cpu().numpy())
-
-    all_mu = np.concatenate(all_mu, axis=0)  # [total_samples, 10]
-    
-    mode_str = "AE" if not model.use_kl else "VAE"
-    if hasattr(model, 'use_triplet') and model.use_triplet:
-        mode_str += "+Triplet"
-    
-    for dim in range(all_mu.shape[1]):
-        wandb.log({
-            f'{mode_str.lower()}_latent_dim_{dim}': wandb.Histogram(all_mu[:, dim])
-        })
 
 if __name__ == "__main__":
     train()

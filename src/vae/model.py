@@ -1,9 +1,8 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from typing import List, Tuple, Optional, Dict
+from typing import List, Tuple, Optional
 
-from src.vae.losses import loss_function
+from src.vae.losses import compute_loss
 
 class HarmonicVAE(nn.Module):
     def __init__(
@@ -14,7 +13,6 @@ class HarmonicVAE(nn.Module):
         beta: float = 1.0,
         loss: dict = None,
         use_kl: bool = True,
-        # contractive_weight: float = 0.0,
         free_bits: float = 0.0,
         use_ddsp_decoder: bool = False
     ):
@@ -23,31 +21,25 @@ class HarmonicVAE(nn.Module):
         self.latent_dim = latent_dim
         self.hidden_dims = hidden_dims
         self.use_kl = use_kl
-        # self.contractive_weight = contractive_weight
         self.free_bits = free_bits
-        self.use_ddsp_decoder = use_ddsp_decoder
-        
-        # self.identity_test = False
-        
+        self.use_ddsp_decoder = use_ddsp_decoder        
+
         if loss is not None:
             self.beta = loss.get('beta', beta)
             self.recon_weight = loss.get('recon_weight', 1.0)
             self.use_kl = loss.get('use_kl', use_kl)
             self.free_bits = loss.get('free_bits', free_bits)
             self.use_ddsp_decoder = loss.get('use_ddsp_decoder', use_ddsp_decoder)
-            # self.identity_test = loss.get('identity_test', False)
 
             self.use_triplet = loss.get('use_triplet', False)
             self.triplet_weight = loss.get('triplet_weight', 0.01)
             self.triplet_margin = loss.get('triplet_margin', 0.3)
-            # self.triplet_mining_strategy = loss.get('triplet_mining_strategy', 'batch_all')
         else:
             self.beta = beta
             self.recon_weight = 1.0
             self.use_triplet = False
             self.triplet_weight = 0.01
             self.triplet_margin = 0.3
-            # self.triplet_mining_strategy = 'batch_all'
 
         self.current_beta = self.beta if self.use_kl else 0.0
         
@@ -165,18 +157,22 @@ class HarmonicVAE(nn.Module):
         loss_weights: Optional[dict] = None,
         logger=None,
     ) -> dict:
-        """Delegate loss computation to the shared VAE loss implementation."""
-        return loss_function(
-            self,
-            recon_x,
-            x,
-            mu,
+        return compute_loss(
+            recon_x=recon_x,
+            x=x,
+            mu=mu,
             logvar=logvar,
             labels=labels,
+            use_ddsp_decoder=self.use_ddsp_decoder,
+            use_kl=self.use_kl,
+            free_bits=self.free_bits,
+            recon_weight=self.recon_weight,
+            beta=self.current_beta,
+            use_triplet=self.use_triplet,
+            triplet_weight=self.triplet_weight,
+            mine_triplets_fn=self.mine_triplets if self.use_triplet else None,
             loss_weights=loss_weights,
-            logger=logger,
         )
-    
 
     def mine_triplets(self, embeddings: torch.Tensor, labels: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         return self._batch_all_vectorized(embeddings, labels)
