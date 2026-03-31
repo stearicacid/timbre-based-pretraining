@@ -4,14 +4,16 @@ import torch
 import wandb
 import logging
 from pathlib import Path
+import os
 
 from src.vae.model import HarmonicVAE
 from src.vae.dataset import create_dataloaders
 from src.utils.reproducibility import set_seed, make_deterministic
 from src.utils.logging_utils import log_model_info
 from src.utils.beta_scheduler import BetaScheduler
-from src.vae.io import save_checkpoint, EarlyStopping, setup_device, setup_wandb_for_sweep, EMAOptimizer, integrate_analysis_metrics
-from src.vae.trainer import train_epoch, validate_epoch
+from src.vae.io import save_checkpoint, setup_device, setup_wandb_for_sweep, integrate_analysis_metrics
+from src.vae.hooks import EarlyStopping, EMAOptimizer
+from src.vae.trainer import Trainer
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +22,7 @@ logger = logging.getLogger(__name__)
 def train(cfg: DictConfig) -> None:
     """Main training function."""
     
-    import os
+    
     logger.info(f"Working directory: {os.getcwd()}")
         
     # === 1. 再現性の設定 ===
@@ -174,6 +176,7 @@ def train(cfg: DictConfig) -> None:
     logger.info("Starting training...")
     best_val_loss = float('inf')
     output_dir = Path(os.getcwd())
+    trainer = Trainer(cfg, logger)
     
     for epoch in range(cfg.training.epochs):
         # βスケジューリング（VAEモードのみ）
@@ -191,14 +194,14 @@ def train(cfg: DictConfig) -> None:
                 logger.info(f"Epoch {epoch+1}: β = {current_beta:.4f} (STABLE)")
         
         # === 8.1 訓練フェーズ ===
-        train_metrics = train_epoch(
-            model, train_loader, optimizer, device, cfg, epoch, ema
+        train_metrics = trainer.train_epoch(
+            model, train_loader, optimizer, epoch, ema
         )
         
         # === 8.2 検証フェーズ ===
         if (epoch + 1) % cfg.training.validation_interval == 0:
-            val_metrics = validate_epoch(
-                model, val_loader, device, cfg, epoch
+            val_metrics = trainer.validate_epoch(
+                model, val_loader, epoch
             )
         else:
             val_metrics = {}
