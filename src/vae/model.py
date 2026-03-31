@@ -9,39 +9,28 @@ class HarmonicVAE(nn.Module):
         self,
         input_dim: int = 45,
         latent_dim: int = 10,
-        hidden_dims: List[int] = [128, 64, 32],
+        hidden_dims: Optional[List[int]] = None,
         beta: float = 1.0,
-        loss: dict = None,
-        use_kl: bool = True,
+        loss: Optional[dict] = None,
         free_bits: float = 0.0,
         use_ddsp_decoder: bool = False
     ):
         super().__init__()
+
         self.input_dim = input_dim
         self.latent_dim = latent_dim
         self.hidden_dims = hidden_dims
-        self.use_kl = use_kl
         self.free_bits = free_bits
-        self.use_ddsp_decoder = use_ddsp_decoder        
+        self.use_ddsp_decoder = use_ddsp_decoder
 
-        if loss is not None:
-            self.beta = loss.get('beta', beta)
-            self.recon_weight = loss.get('recon_weight', 1.0)
-            self.use_kl = loss.get('use_kl', use_kl)
-            self.free_bits = loss.get('free_bits', free_bits)
-            self.use_ddsp_decoder = loss.get('use_ddsp_decoder', use_ddsp_decoder)
+        self.beta = loss.get('beta', beta)
+        self.recon_weight = loss.get('recon_weight', 1.0)
+        self.free_bits = loss.get('free_bits', free_bits)
+        self.use_ddsp_decoder = loss.get('use_ddsp_decoder', use_ddsp_decoder)
+        self.triplet_weight = loss.get('triplet_weight', 0.01)
+        self.triplet_margin = loss.get('triplet_margin', 0.3)
 
-            self.use_triplet = loss.get('use_triplet', False)
-            self.triplet_weight = loss.get('triplet_weight', 0.01)
-            self.triplet_margin = loss.get('triplet_margin', 0.3)
-        else:
-            self.beta = beta
-            self.recon_weight = 1.0
-            self.use_triplet = False
-            self.triplet_weight = 0.01
-            self.triplet_margin = 0.3
-
-        self.current_beta = self.beta if self.use_kl else 0.0
+        self.current_beta = self.beta
         
 
         # Encoder 
@@ -60,19 +49,8 @@ class HarmonicVAE(nn.Module):
         self.encoder = nn.Sequential(*encoder_layers)
         
         # Latent space
-        if self.use_kl:
-            self.fc_mu = nn.Linear(hidden_dims[-1], latent_dim)
-            self.fc_logvar = nn.Linear(hidden_dims[-1], latent_dim)
-
-            nn.init.xavier_uniform_(self.fc_mu.weight)
-            nn.init.zeros_(self.fc_mu.bias)  
-            
-            nn.init.xavier_uniform_(self.fc_logvar.weight, gain=0.1)
-            nn.init.constant_(self.fc_logvar.bias, -2.0)
-        else:
-            self.fc_latent = nn.Linear(hidden_dims[-1], latent_dim)
-            nn.init.xavier_uniform_(self.fc_latent.weight)
-            nn.init.zeros_(self.fc_latent.bias)
+        self.fc_mu = nn.Linear(hidden_dims[-1], latent_dim)
+        self.fc_logvar = nn.Linear(hidden_dims[-1], latent_dim)
         
         # Decoder 
         decoder_layers = []
@@ -96,8 +74,8 @@ class HarmonicVAE(nn.Module):
         self._initialize_weights()
 
         
-        print(f"Final encoder: {self.encoder}")
-        print(f"Final decoder: {self.decoder}")
+        logger.info(f"Final encoder: {self.encoder}")
+        logger.info(f"Final decoder: {self.decoder}")
 
     def _initialize_weights(self):
         """全ての線形層をXavier初期化"""
@@ -108,23 +86,16 @@ class HarmonicVAE(nn.Module):
                 nn.init.zeros_(module.bias)
 
         
-    def encode(self, x: torch.Tensor) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    def encode(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         h = self.encoder(x)
-        if self.use_kl:
-            mu = self.fc_mu(h)
-            logvar = self.fc_logvar(h)
-            return mu, logvar
-        else:
-            latent = self.fc_latent(h)
-            return latent, None
+        mu = self.fc_mu(h)
+        logvar = self.fc_logvar(h)
+        return mu, logvar
     
-    def reparameterize(self, mu: torch.Tensor, logvar: Optional[torch.Tensor] = None) -> torch.Tensor:
-        if self.use_kl and logvar is not None:
-            std = torch.exp(0.5 * logvar)
-            eps = torch.randn_like(std)
-            return mu + eps * std
-        else:
-            return mu
+    def reparameterize(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return mu + eps * std
     
     def decode(self, z: torch.Tensor) -> torch.Tensor:
         logits = self.decoder(z)
@@ -142,10 +113,7 @@ class HarmonicVAE(nn.Module):
         return recon_x, mu, logvar
     
     def set_beta(self, beta: float):
-        if self.use_kl:
-            self.current_beta = beta
-        else:
-            self.current_beta = 0.0
+        self.current_beta = beta
 
     def loss_function(
         self,
@@ -164,13 +132,11 @@ class HarmonicVAE(nn.Module):
             logvar=logvar,
             labels=labels,
             use_ddsp_decoder=self.use_ddsp_decoder,
-            use_kl=self.use_kl,
             free_bits=self.free_bits,
             recon_weight=self.recon_weight,
             beta=self.current_beta,
-            use_triplet=self.use_triplet,
             triplet_weight=self.triplet_weight,
-            mine_triplets_fn=self.mine_triplets if self.use_triplet else None,
+            mine_triplets_fn=self.mine_triplets,
             loss_weights=loss_weights,
         )
 
@@ -204,9 +170,5 @@ class HarmonicVAE(nn.Module):
         losses_for_valid_triplets = losses[mask]
         final_losses = torch.clamp(losses_for_valid_triplets, min=0.0)
 
-        if final_losses.numel() > 0:
-            return final_losses.mean()
-
-        else:
-            return torch.tensor(0.0, device=embeddings.device)
+        return final_losses.mean()
 

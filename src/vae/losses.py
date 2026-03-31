@@ -9,11 +9,9 @@ def compute_loss(recon_x: torch.Tensor, x: torch.Tensor,
                     labels: Optional[torch.Tensor] = None,
                     *,
                     use_ddsp_decoder: bool = False,
-                    use_kl: bool = True,
                     free_bits: float = 0.0,
                     recon_weight: float = 1.0,
                     beta: float = 1.0,
-                    use_triplet: bool = False,
                     triplet_weight: float = 0.01,
                     mine_triplets_fn: Optional[Callable] = None,
                     loss_weights: Optional[dict] = None,
@@ -30,35 +28,30 @@ def compute_loss(recon_x: torch.Tensor, x: torch.Tensor,
     mse_loss = F.mse_loss(recon_x, x_processed, reduction='mean')
     recon_loss = mse_loss
 
-    
-    if use_kl and logvar is not None:
-        kl_per_dim = -0.5 * (1 + logvar - mu.pow(2) - logvar.exp())
-        if free_bits > 0:
-            kl_per_dim = torch.clamp(kl_per_dim - free_bits, min=0.0)
-        kl_div = kl_per_dim.sum(dim=1).mean()
-    else:
-        kl_div = torch.tensor(0.0, device=x.device)
+    if logvar is None:
+        raise ValueError("logvar must not be None in VAE mode")
+
+    kl_per_dim = -0.5 * (1 + logvar - mu.pow(2) - logvar.exp())
+    if free_bits > 0:
+        kl_per_dim = torch.clamp(kl_per_dim - free_bits, min=0.0)
+    kl_div = kl_per_dim.sum(dim=1).mean()
+
 
     triplet_loss = torch.tensor(0.0, device=x.device)
     triplet_time = 0.0
-    if use_triplet and labels is not None and len(labels.unique()) > 1:
-        try:
-            labels_flat = labels.flatten() if labels.dim() > 1 else labels
-            start_time = time.time()
-            triplet_loss = mine_triplets_fn(mu, labels_flat) if mine_triplets_fn is not None else torch.tensor(0.0, device=x.device)
-            triplet_time = time.time() - start_time
-        except Exception as e:
-            triplet_loss = torch.tensor(0.0, device=x.device)
+    if labels is not None and len(labels.unique()) > 1:
+        labels_flat = labels.flatten() if labels.dim() > 1 else labels
+        start_time = time.time()
+        triplet_loss = mine_triplets_fn(mu, labels_flat)
+        triplet_time = time.time() - start_time
     
     total_loss = (recon_weight * recon_loss + 
                     beta * kl_div +
                     triplet_weight * triplet_loss)
     
-    actual_kl = (-0.5 * (1 + logvar - mu.pow(2) - logvar.exp())).sum(dim=1).mean() if use_kl and logvar is not None else torch.tensor(0.0, device=x.device)
+    actual_kl = (-0.5 * (1 + logvar - mu.pow(2) - logvar.exp())).sum(dim=1).mean()
     
-    mode_str = 'VAE-DDSP' if use_ddsp_decoder else ('VAE' if use_kl else 'AE')
-    if use_triplet:
-        mode_str += '+Triplet'
+    mode_str = 'VAE-DDSP+Triplet' if use_ddsp_decoder else 'VAE+Triplet'
     
     return {
         'total_loss': total_loss,

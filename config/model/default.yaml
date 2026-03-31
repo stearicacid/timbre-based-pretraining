@@ -9,13 +9,11 @@ hidden_dims: [512, 256, 128]
 loss:
   beta: 0.1  
   recon_weight: 1.0
-  use_kl: true  
   free_bits: 0.1
   identity_test: false
   loss_weights:
     mse: 1.0
   # Triplet Loss
-  use_triplet: true
   triplet_weight: 1.0
   triplet_margin: 0.5  
   triplet_mining_strategy: "batch_all"  

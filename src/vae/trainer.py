@@ -93,19 +93,15 @@ class Trainer:
 
         model = HarmonicVAE(**model_params).to(device)
 
-        model_mode = "AutoEncoder" if not model.use_kl else "VAE"
+        model_mode = "VAE+Triplet"
         logger.info(f"Model mode: {model_mode}")
-        if model.use_kl:
-            logger.info(f"Initial β value: {model.current_beta}")
-        else:
-            logger.info("KL divergence disabled (AutoEncoder mode)")
+        logger.info(f"Initial β value: {model.current_beta}")
 
         if cfg.logging.wandb.enabled:
             log_model_info(model, sample_tensor.to(device))
             wandb.config.update(
                 {
                     "model_mode": model_mode,
-                    "use_kl": model.use_kl,
                     "actual_latent_dim": cfg.model.latent_dim,
                     "actual_loss_weights": OmegaConf.to_container(
                         cfg.model.loss.get("loss_weights", {}), resolve=True
@@ -125,7 +121,7 @@ class Trainer:
             early_stopping = EarlyStopping(**early_stopping_config)
 
         beta_scheduler = None
-        if model.use_kl and hasattr(cfg.model, "beta_scheduler") and cfg.model.beta_scheduler.enabled:
+        if hasattr(cfg.model, "beta_scheduler") and cfg.model.beta_scheduler.enabled:
             freeze_epochs = cfg.model.beta_scheduler.get("freeze_epochs", 10)
             beta_scheduler = BetaScheduler(
                 schedule_type=cfg.model.beta_scheduler.schedule_type,
@@ -138,8 +134,6 @@ class Trainer:
             logger.info(f"Beta scheduler initialized: {cfg.model.beta_scheduler.schedule_type}")
             logger.info(f"Freeze epochs (β=0): {freeze_epochs}")
             logger.info(f"Warmup epochs: {cfg.model.beta_scheduler.warmup_epochs}")
-        elif not model.use_kl:
-            logger.info("Beta scheduler disabled (AutoEncoder mode)")
         else:
             logger.info("Beta scheduler disabled by configuration")
 
@@ -229,7 +223,7 @@ class Trainer:
         )
         self.logger.info("Training completed. Final model saved.")
 
-        self._run_final_analysis()
+        # self._run_final_analysis()
 
         if self.cfg.logging.wandb.enabled:
             wandb.finish()
@@ -246,63 +240,54 @@ class Trainer:
 
         for batch_idx, batch_data in enumerate(train_pbar):
             data, labels = self._prepare_batch(batch_data)
-            if data is None:
-                continue
+            # if data is None:
+            #     continue
 
             self.optimizer.zero_grad()
+            recon_data, mu, logvar = self.model(data)
+            losses = self.model.loss_function(
+                recon_data,
+                data,
+                mu,
+                logvar,
+                loss_weights=self.loss_weights,
+                labels=labels,
+                logger=self.logger,
+            )
+            losses["total_loss"].backward()
 
-            try:
-                recon_data, mu, logvar = self.model(data)
-                losses = self.model.loss_function(
-                    recon_data,
-                    data,
-                    mu,
-                    logvar,
-                    loss_weights=self.loss_weights,
-                    labels=labels,
-                    logger=self.logger,
+            if (
+                hasattr(self.cfg.optimization, "gradient_clipping")
+                and self.cfg.optimization.gradient_clipping.enabled
+            ):
+                torch.nn.utils.clip_grad_norm_(
+                    self.model.parameters(),
+                    self.cfg.optimization.gradient_clipping.get("max_norm", 1.0),
+                    norm_type=self.cfg.optimization.gradient_clipping.get("norm_type", 2),
                 )
-                losses["total_loss"].backward()
 
-                if (
-                    hasattr(self.cfg.optimization, "gradient_clipping")
-                    and self.cfg.optimization.gradient_clipping.enabled
-                ):
-                    torch.nn.utils.clip_grad_norm_(
-                        self.model.parameters(),
-                        self.cfg.optimization.gradient_clipping.get("max_norm", 1.0),
-                        norm_type=self.cfg.optimization.gradient_clipping.get("norm_type", 2),
-                    )
+            self.optimizer.step()
+            if self.ema is not None:
+                self.ema.update()
 
-                self.optimizer.step()
-                if self.ema is not None:
-                    self.ema.update()
+            train_losses["total"].append(losses["total_loss"].item())
+            train_losses["recon"].append(losses["recon_loss"].item())
+            train_losses["kl"].append(losses["kl_div"].item())
+            train_losses["triplet"].append(
+                losses.get("triplet_loss", torch.tensor(0.0)).item()
+            )
+            triplet_times.append(losses.get("triplet_time", 0.0))
 
-                train_losses["total"].append(losses["total_loss"].item())
-                train_losses["recon"].append(losses["recon_loss"].item())
-                train_losses["kl"].append(losses["kl_div"].item())
-                train_losses["triplet"].append(
-                    losses.get("triplet_loss", torch.tensor(0.0)).item()
-                )
-                triplet_times.append(losses.get("triplet_time", 0.0))
-
-            except Exception as e:
-                self.logger.error(f"Error in batch {batch_idx}: {e}")
-                continue
 
             if batch_idx % self.cfg.logging.log_interval == 0:
                 postfix = {
                     "Loss": f"{losses['total_loss'].item():.4f}",
                     "Recon": f"{losses['recon_loss'].item():.4f}",
                     "Mode": losses.get("mode", mode_str),
+                    "KL": f"{losses['kl_div'].item():.4f}",
+                    "β": f"{losses.get('beta', 0.0):.4f}",
+                    "Triplet": f"{losses.get('triplet_loss', torch.tensor(0.0)).item():.4f}",
                 }
-                if self.model.use_kl:
-                    postfix["KL"] = f"{losses['kl_div'].item():.4f}"
-                    postfix["β"] = f"{losses.get('beta', 0.0):.4f}"
-                if hasattr(self.model, "use_triplet") and self.model.use_triplet:
-                    postfix["Triplet"] = (
-                        f"{losses.get('triplet_loss', torch.tensor(0.0)).item():.4f}"
-                    )
                 train_pbar.set_postfix(postfix)
 
         if triplet_times:
@@ -334,27 +319,22 @@ class Trainer:
                 if data is None:
                     continue
 
-                try:
-                    recon_data, mu, logvar = self.model(data)
-                    losses = self.model.loss_function(
-                        recon_data,
-                        data,
-                        mu,
-                        logvar,
-                        loss_weights=self.loss_weights,
-                        labels=labels,
-                    )
+                recon_data, mu, logvar = self.model(data)
+                losses = self.model.loss_function(
+                    recon_data,
+                    data,
+                    mu,
+                    logvar,
+                    loss_weights=self.loss_weights,
+                    labels=labels,
+                )
 
-                    val_losses["total"].append(losses["total_loss"].item())
-                    val_losses["recon"].append(losses["recon_loss"].item())
-                    val_losses["kl"].append(losses["kl_div"].item())
-                    val_losses["triplet"].append(
-                        losses.get("triplet_loss", torch.tensor(0.0)).item()
-                    )
-
-                except Exception as e:
-                    self.logger.error(f"Error in validation batch {batch_idx}: {e}")
-                    continue
+                val_losses["total"].append(losses["total_loss"].item())
+                val_losses["recon"].append(losses["recon_loss"].item())
+                val_losses["kl"].append(losses["kl_div"].item())
+                val_losses["triplet"].append(
+                    losses.get("triplet_loss", torch.tensor(0.0)).item()
+                )
 
         return {
             "val/loss": np.mean(val_losses["total"]) if val_losses["total"] else 0.0,
@@ -411,55 +391,50 @@ class Trainer:
         return data, labels
 
     def _get_mode_str(self) -> str:
-        mode_str = "AE" if not self.model.use_kl else "VAE"
-        if hasattr(self.model, "use_triplet") and self.model.use_triplet:
-            mode_str += "+Triplet"
-        return mode_str
+        return "VAE+Triplet"
 
     def _apply_beta_schedule(self, epoch: int) -> float:
-        if self.model.use_kl:
-            if self.beta_scheduler is not None:
-                current_beta = self.beta_scheduler.step(epoch)
-                self.model.set_beta(current_beta)
-                if epoch < self.beta_scheduler.freeze_epochs:
-                    self.logger.info(
-                        f"Epoch {epoch+1}: β = {current_beta:.4f} (FREEZE PHASE)"
-                    )
-                elif epoch < self.beta_scheduler.freeze_epochs + self.beta_scheduler.warmup_epochs:
-                    warmup_progress = (
-                        (epoch - self.beta_scheduler.freeze_epochs)
-                        / (self.beta_scheduler.warmup_epochs - self.beta_scheduler.freeze_epochs)
-                    )
-                    self.logger.info(
-                        f"Epoch {epoch+1}: β = {current_beta:.4f} "
-                        f"(WARMUP: {warmup_progress:.1%})"
-                    )
-                else:
-                    self.logger.info(f"Epoch {epoch+1}: β = {current_beta:.4f} (STABLE)")
-                return current_beta
-            return self.model.current_beta
-        return 0.0
-
-    def _run_final_analysis(self) -> None:
-        try:
-            self.logger.info("Generating final analysis...")
-            self.tradeoff_analysis.plot_tradeoff_curves(
-                str(self.output_dir / "tradeoff_curves.png")
-            )
-            optimal_params = self.tradeoff_analysis.find_optimal_hyperparameters()
-
-            self.logger.info("=== Final Analysis Results ===")
-            if optimal_params:
-                self.logger.info(f"Optimal epoch: {optimal_params.get('epoch', 'N/A')}")
+        if self.beta_scheduler is not None:
+            current_beta = self.beta_scheduler.step(epoch)
+            self.model.set_beta(current_beta)
+            if epoch < self.beta_scheduler.freeze_epochs:
                 self.logger.info(
-                    "Optimal reconstruction loss: "
-                    f"{optimal_params.get('mean_recon_loss', 'N/A'):.4f}"
+                    f"Epoch {epoch+1}: β = {current_beta:.4f} (FREEZE PHASE)"
+                )
+            elif epoch < self.beta_scheduler.freeze_epochs + self.beta_scheduler.warmup_epochs:
+                warmup_progress = (
+                    (epoch - self.beta_scheduler.freeze_epochs)
+                    / (self.beta_scheduler.warmup_epochs - self.beta_scheduler.freeze_epochs)
                 )
                 self.logger.info(
-                    f"Optimal silhouette score: {optimal_params.get('silhouette_score', 'N/A'):.4f}"
+                    f"Epoch {epoch+1}: β = {current_beta:.4f} "
+                    f"(WARMUP: {warmup_progress:.1%})"
                 )
-                self.logger.info(f"Optimal ARI: {optimal_params.get('ari', 'N/A'):.4f}")
             else:
-                self.logger.info("No optimal parameters found")
-        except Exception as e:
-            self.logger.warning(f"Error in final analysis: {e}")
+                self.logger.info(f"Epoch {epoch+1}: β = {current_beta:.4f} (STABLE)")
+            return current_beta
+        return self.model.current_beta
+
+    # def _run_final_analysis(self) -> None:
+    #     try:
+    #         self.logger.info("Generating final analysis...")
+    #         self.tradeoff_analysis.plot_tradeoff_curves(
+    #             str(self.output_dir / "tradeoff_curves.png")
+    #         )
+    #         optimal_params = self.tradeoff_analysis.find_optimal_hyperparameters()
+
+    #         self.logger.info("=== Final Analysis Results ===")
+    #         if optimal_params:
+    #             self.logger.info(f"Optimal epoch: {optimal_params.get('epoch', 'N/A')}")
+    #             self.logger.info(
+    #                 "Optimal reconstruction loss: "
+    #                 f"{optimal_params.get('mean_recon_loss', 'N/A'):.4f}"
+    #             )
+    #             self.logger.info(
+    #                 f"Optimal silhouette score: {optimal_params.get('silhouette_score', 'N/A'):.4f}"
+    #             )
+    #             self.logger.info(f"Optimal ARI: {optimal_params.get('ari', 'N/A'):.4f}")
+    #         else:
+    #             self.logger.info("No optimal parameters found")
+    #     except Exception as e:
+    #         self.logger.warning(f"Error in final analysis: {e}")
