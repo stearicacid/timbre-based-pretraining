@@ -1,0 +1,40 @@
+# WandB settings
+wandb:
+  enabled: true
+  project: "vaemonics"
+  entity: "rinsato-waseda-university"
+  name: null  
+  tags: ["vae", "harmonic"]
+  notes: "VAE for harmonic structure learning"
+  mode: "online"  # online, offline, disabled
+
+  name_format: "{base_name}_{timestamp}"  
+  timestamp_format: "%Y%m%d_%H%M%S"  
+
+  config:
+    save_hyperparameters: true
+
+  artifacts:
+    log_model: true
+    log_checkpoints: true
+
+# Logging frequencies
+log_interval: 10  # Log batch metrics every N batches
+log_epoch_interval: 1  # Log epoch metrics every N epochs
+log_model_freq: 100  # Log model gradients/parameters every N batches
+log_reconstruction_freq: 10  # Log reconstruction examples every N epochs
+log_latent_freq: 5  # Log latent space visualization every N epochs
+
+# Model checkpointing
+checkpoint:
+  save_best: true
+  save_last: true
+  save_interval: 10  # Save checkpoint every N epochs
+  monitor: "val/loss"
+  mode: "min"
+  
+# Artifact logging
+artifacts:
+  log_model: true
+  log_checkpoints: true
+  log_config: true

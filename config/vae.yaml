@@ -1,0 +1,38 @@
+defaults:
+  - model: default
+  - dataset: vae_nsynth
+  - training: default
+  - optimization: default
+  - logging: default
+  - _self_
+
+# Experiment settings
+experiment_name: "vae"
+output_dir: "./outputs" 
+seed: 42
+deterministic: true  
+
+# Hardware settings
+device: "auto"  
+num_gpus: 1
+
+# Checkpoint settings
+checkpoint:
+  save_dir: null  
+  save_best: true
+  save_last: true
+  save_interval: 10
+  filename_format: "{experiment_name}_{timestamp}_{type}.pth"
+  timestamp_format: "%Y%m%d_%H%M%S"
+
+# Hydra settings
+hydra:
+  run:
+    dir: ${output_dir}/${experiment_name}/${now:%Y-%m-%d_%H-%M-%S}
+  sweep:
+    dir: ${output_dir}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  job:
+    chdir: true  
+    env_set:
+      WANDB_START_METHOD: thread
+      PYTHONHASHSEED: "42"

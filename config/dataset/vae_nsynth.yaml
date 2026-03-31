@@ -1,0 +1,40 @@
+_target_: src.data.dataset.create_dataloaders
+
+# Data paths (matching your existing structure)
+train_data_dir: "/data3/rin/ddsp/train"
+valid_data_dir: "/data3/rin/ddsp/valid"
+test_data_dir: "/data3/rin/ddsp/test"
+
+# Dataset mode
+mode: "train_val"  # 'train_val', 'train_only', 'test_only'
+
+# Feature settings
+feature_type: "harmonic"  # 'harmonic' or 'spectrogram'
+
+# Data loading settings
+batch_size: 64
+
+eager_cache: false
+
+# Dataset optimization
+max_samples: null  # null for all samples, int for limit
+train_max_samples: null  # null for all samples, int for limit
+valid_max_samples: null  # null for all samples, int for limit
+test_max_samples: null  # null for all samples, int for limit
+cache_features: true  # Cache features in memory for faster loading
+verify_data: true  # Verify data integrity on startup
+
+# Data processing (for harmonic features)
+temporal_pooling: "mean"  # How to handle time dimension: 'mean', 'max', or null
+
+# 正規化設定を追加
+normalization:
+  enabled: true
+  method: "minmax"  # "standardize", "minmax", "robust", "none"
+  feature_range: [0.0, 1.0]  # MinMaxスケーリング用
+  epsilon: 1e-8
+  clip_outliers: false
+  outlier_percentiles: [1.0, 99.0]
+  max_samples: 1000000  # 統計計算に使用する最大サンプル数
+  save_normalizer: true  # 正規化器を保存するか
+

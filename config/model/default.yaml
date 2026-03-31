@@ -1,0 +1,32 @@
+_target_: src.models.vae.HarmonicVAE
+
+# Model architecture
+input_dim: 45 
+latent_dim: 24  
+hidden_dims: [512, 256, 128]  
+
+# VAE specific 
+loss:
+  beta: 0.1  
+  recon_weight: 1.0
+  use_kl: true  
+  free_bits: 0.1
+  identity_test: false
+  loss_weights:
+    mse: 1.0
+  # Triplet Loss
+  use_triplet: true
+  triplet_weight: 0.1
+  triplet_margin: 1.0  
+  triplet_mining_strategy: "batch_hard"  
+
+# Beta scheduling 
+beta_scheduler:
+  enabled: true
+  schedule_type: "linear_warmup"  
+  beta_start: 0.0
+  beta_end: 0.3  
+  warmup_epochs: 50  
+  freeze_epochs: 10
+
+contractive_weight: 0.0

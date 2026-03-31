@@ -1,0 +1,42 @@
+# Training parameters
+epochs: 100
+learning_rate: 1e-3
+weight_decay: 1e-5
+
+# Validation
+validation_interval: 1 
+
+# Early stopping
+early_stopping:
+  enabled: true
+  patience: 20
+  min_delta: 1e-4
+  monitor: "val/loss"
+  mode: "min"
+
+# Training behavior
+accumulate_grad_batches: 1 
+mixed_precision: false  
+deterministic: ${deterministic}
+
+# Data loading
+dataloader_num_workers: 12
+pin_memory: true
+persistent_workers: true
+prefetch_factor: 4
+
+# Optimizer
+optimizer:
+  _target_: torch.optim.Adam
+  lr: ${training.learning_rate}
+  weight_decay: ${training.weight_decay}
+
+# Scheduler
+scheduler:
+  _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+  patience: 10
+  factor: 0.5
+
+# Logging
+log_interval: 10
+save_interval: 10

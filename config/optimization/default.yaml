@@ -1,0 +1,33 @@
+# Optimizer settings
+optimizer:
+  _target_: torch.optim.Adam
+  lr: ${training.learning_rate}
+  weight_decay: ${training.weight_decay}
+  betas: [0.9, 0.999]
+  eps: 1e-8
+  amsgrad: false
+
+# Scheduler settings
+scheduler:
+  _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+  mode: 'min'
+  factor: 0.5
+  patience: 10
+  threshold: 1e-4
+  threshold_mode: 'rel'
+  cooldown: 2
+  min_lr: 1e-6
+  eps: 1e-8
+  
+# Gradient clipping
+gradient_clipping:
+  enabled: true
+  max_norm: 1.0
+  norm_type: 2
+
+# EMA settings
+use_ema: true
+ema:
+  decay: 0.999
+  update_after_step: 0
+  update_every: 1
