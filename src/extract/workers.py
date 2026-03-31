@@ -3,6 +3,9 @@ import tensorflow as tf
 from datetime import datetime
 import hashlib
 
+import logging
+logger = logging.getLogger(__name__)
+
 from utils.utils import cleanup_tensorflow_memory
 from extract.features import extract_harmonic_distribution
 
@@ -21,11 +24,11 @@ def process_single_sample(params):
         selected_gpu = available_gpus[gpu_index]
         os.environ['CUDA_VISIBLE_DEVICES'] = selected_gpu
     elif parent_gpu:
-        print(f"[DEBUG] Process for {params['file_id']} using parent GPU setting: {parent_gpu}")
+        logger.info(f"[DEBUG] Process for {params['file_id']} using parent GPU setting: {parent_gpu}")
     else:
         gpu_id = params.get('gpu_id', 0)
         os.environ['CUDA_VISIBLE_DEVICES'] = str(gpu_id)
-        print(f"[DEBUG] Process for {params['file_id']} using GPU: {gpu_id}")
+        logger.info(f"[DEBUG] Process for {params['file_id']} using GPU: {gpu_id}")
     
     gpus = tf.config.list_physical_devices('GPU')
     if gpus:
@@ -33,9 +36,8 @@ def process_single_sample(params):
             for gpu in gpus:
                 tf.config.experimental.set_memory_growth(gpu, True)
         except RuntimeError as e:
+            logger.warning(f"Failed to set memory growth for GPUs: {e}")
             pass  
-
-    
 
     audio_np = params['audio_data']
     file_id = params['file_id']
@@ -80,8 +82,8 @@ def process_single_sample(params):
         })
         
     else:
+        logger.error(f"Unsupported feature type: {feature_type}")
         raise ValueError(f"Unsupported feature type: {feature_type}")
-    
 
     cleanup_tensorflow_memory()
         
