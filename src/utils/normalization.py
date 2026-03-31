@@ -40,9 +40,6 @@ class DataNormalizer:
         return normalized, sum_before
     
     def denormalize(self, normalized: np.ndarray, sum_before: np.ndarray) -> np.ndarray:
-        """
-        正規化済み分布 + 合計 → ロジット
-        """
         y = normalized * sum_before
         return self.inv_exp_sigmoid_np(y)        
         
@@ -169,7 +166,6 @@ class DataNormalizer:
         logger.info(f"  Normalized mean range: [{np.min(self.stats['normalized_mean']):.4f}, {np.max(self.stats['normalized_mean']):.4f}]")
         logger.info(f"  Sum before mean: {self.stats['sum_before_mean']:.4f} ± {self.stats['sum_before_std']:.4f}")
 
-# --- DDSP Style Normalization Functions (for backward compatibility) ---
 
 def exp_sigmoid(x: torch.Tensor, exponent: float = 10.0, max_value: float = 2.0, threshold: float = 1e-7) -> torch.Tensor:
     """
@@ -195,7 +191,6 @@ def ddsp_style_normalization(x: torch.Tensor) -> torch.Tensor:
     x = normalize_harmonics(x)
     return x
 
-# --- End of DDSP Style Normalization Functions ---
 
 def create_normalizer_from_dataset(
     train_loader: torch.utils.data.DataLoader,

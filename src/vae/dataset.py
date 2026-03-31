@@ -1,7 +1,7 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
-from typing import Tuple, List, Optional
+from typing import Tuple, Optional
 import logging
 import os
 import json
@@ -49,8 +49,8 @@ class HarmonicDataset(Dataset):
         self.test_max_samples = test_max_samples
         self.cache_features = cache_features
         self.verify_data = verify_data
-        self.pool_time_dim = pool_time_dim  # フラグをインスタンス変数として保存
-        self.eager_cache = eager_cache      # 追加
+        self.pool_time_dim = pool_time_dim  
+        self.eager_cache = eager_cache     
         
         # Cache for features and labels
         self.features_cache = {}
@@ -66,33 +66,29 @@ class HarmonicDataset(Dataset):
         if self.verify_data:
             self._verify_dataset()
         
-        # 追加: 初回に全件をキャッシュ（メモリ余裕がある場合のみ推奨）
+        # Optional: cache all samples at startup (recommended only with enough memory).
         if self.cache_features and self.eager_cache:
             self._eager_fill_cache()
 
         logger.info(f"{mode} dataset initialized with {len(self.feature_files)} samples")
 
-    # 追加: 全件キャッシュ関数
+    # Helper: eagerly cache all samples.
     def _eager_fill_cache(self):
         logger.info("Eager caching all features/labels into CPU memory...")
         for idx in range(len(self.feature_files)):
-            # _load_feature/_load_label は cache_features=True の場合キャッシュに載る
+            # _load_feature/_load_label will populate caches when cache_features=True.
             _ = self._load_feature(idx)
             _ = self._load_label(idx)
         logger.info("Eager cache completed")
 
     def _load_file_paths(self):
         """Load feature and label file paths with natural sorting."""
-        # Look for feature files
         feature_pattern = f"feature_*.npy"
-        # globでファイルリストをまず取得
         feature_files_unsorted = glob.glob(str(self.data_dir / feature_pattern))
 
-        # 自然順ソートのためのキー関数を定義
         def natural_sort_key(s):
             return [int(text) if text.isdigit() else text.lower() for text in re.split('([0-9]+)', s)]
 
-        # キー関数を使ってファイルリストをソート
         self.feature_files = sorted(feature_files_unsorted, key=natural_sort_key)
         
         if not self.feature_files:
@@ -175,7 +171,7 @@ class HarmonicDataset(Dataset):
     
     def _load_feature(self, idx: int) -> np.ndarray:
         """Load and process feature file."""
-        # キャッシュキーに時間平均化フラグを含める
+        # Include time-pooling mode in the cache key.
         cache_key = (idx, self.pool_time_dim)
         if self.cache_features and cache_key in self.features_cache:
             return self.features_cache[cache_key]
@@ -189,12 +185,12 @@ class HarmonicDataset(Dataset):
             if self.feature_type == 'harmonic':
                 # Features shape: (time_steps, n_harmonics) or (n_harmonics,)
                 if self.pool_time_dim and len(features.shape) == 2:
-                    # 前半の500フレーム（2秒分）のみを使用
-                    features = features[:500]  # 追加行
-                    # 時間平均化フラグがTrueの場合のみ平均化
+                    # Use only the first 500 frames (about 2 seconds).
+                    features = features[:500]  # added line
+                    # Apply temporal mean pooling only when enabled.
                     features = np.mean(features, axis=0)
                 elif len(features.shape) == 1 and not self.pool_time_dim:
-                    # 時間次元がないが、時間次元付きが要求された場合
+                    # No time dimension exists even though time-dim output was requested.
                     logger.warning(f"Feature file {feature_file} has no time dimension. Returning as is.")
                 elif len(features.shape) > 2:
                     raise ValueError(f"Unexpected harmonic feature shape: {features.shape}")
@@ -235,7 +231,7 @@ class HarmonicDataset(Dataset):
             
         except Exception as e:
             logger.error(f"Error loading feature {feature_file}: {e}")
-            # エラーを再発生させる
+            # Re-raise as a runtime error with file context.
             raise RuntimeError(f"Failed to load feature file {feature_file}: {e}") from e
     
     def _load_label(self, idx: int) -> int:
@@ -298,9 +294,9 @@ class HarmonicDataset(Dataset):
         features = self._load_feature(idx)
         label = self._load_label(idx)
         
-        # __getitem__はDataLoaderで使われるため、Tensorを返す必要がある
-        # 時間次元を持つデータはcollatingが難しくなるため、ここでは時間平均化されたものを返す
-        # 時間次元付きデータはget_sample_info経由で取得することを推奨
+        # __getitem__ is used by DataLoader, so return tensors.
+        # Time-dimensional data is harder to collate, so return pooled vectors here.
+        # For full time-dimensional features, use get_sample_info instead.
         if self.pool_time_dim is False and len(features.shape) > 1:
              features = np.mean(features, axis=0)
 
@@ -315,7 +311,7 @@ class HarmonicDataset(Dataset):
         return {
             'idx': idx,
             'file_id': self.file_ids[idx],
-            'feature': features,  # 特徴量データを追加
+            'feature': features,  # Include raw feature data.
             'feature_shape': features.shape,
             'label': label,
             'metadata': metadata
@@ -337,9 +333,9 @@ def create_dataloaders(
     cache_features: bool = True,
     verify_data: bool = True,
     normalization: Optional[dict] = None,
-    prefetch_factor: int = 2,          # 追加
-    persistent_workers: bool = True,   # 追加
-    eager_cache: bool = False,         # 追加
+    prefetch_factor: int = 2,          # Added parameter.
+    persistent_workers: bool = True,   # Added parameter.
+    eager_cache: bool = False,         # Added parameter.
     **kwargs
 ) -> Tuple[DataLoader, DataLoader]:
     """
@@ -366,21 +362,21 @@ def create_dataloaders(
         train_loader, val_loader
     """
     
-    # 個別のmax_samplesが指定されていない場合は、共通のmax_samplesを使用
+    # Use shared max_samples when split-specific limits are not provided.
     actual_train_max = train_max_samples if train_max_samples is not None else max_samples
     actual_valid_max = valid_max_samples if valid_max_samples is not None else max_samples
     actual_test_max = test_max_samples if test_max_samples is not None else max_samples
     
     logger.info(f"Dataset sample limits - Train: {actual_train_max}, Valid: {actual_valid_max}, Test: {actual_test_max}")
     
-    # 正規化器の準備
+    # Prepare normalizer.
     normalizer = None
     if normalization and normalization.get('enabled', False):
         logger.info("Setting up data normalization...")
         
         max_samples_for_norm = normalization.get('max_samples', None)
         
-        # 統計計算用のサンプル数を決定（訓練データから）
+        # Decide number of training samples used for normalization statistics.
         if max_samples_for_norm is None:
             temp_max_samples = actual_train_max
         else:
@@ -391,7 +387,7 @@ def create_dataloaders(
         
         logger.info(f"Using {temp_max_samples} training samples for normalization statistics")
         
-        # まず正規化なしでトレーニングデータセットを作成（統計計算用）
+        # Build an unnormalized training dataset to compute normalization statistics.
         temp_train_dataset = HarmonicDataset(
             data_dir=train_data_dir,
             mode='train',
@@ -410,7 +406,7 @@ def create_dataloaders(
             pin_memory=False
         )
         
-        # DDSP正規化器設定をConfigから取得
+        # Read DDSP normalizer settings from config.
         normalizer_kwargs = {
             'exponent': normalization.get('exponent', 10.0),
             'max_value': normalization.get('max_value', 2.0),
@@ -418,7 +414,7 @@ def create_dataloaders(
             'eps': normalization.get('eps', 1e-8),
         }
         
-        # 正規化器を作成してフィット
+        # Create and fit the normalizer.
         normalizer = create_normalizer_from_dataset(
             temp_train_loader,
             max_samples=None,
@@ -435,7 +431,7 @@ def create_dataloaders(
             data_dir=train_data_dir,
             mode='train',
             feature_type=feature_type,
-            max_samples=actual_train_max,  # 個別指定されたサンプル数を使用
+            max_samples=actual_train_max,  # Use split-specific sample limit.
             cache_features=cache_features,
             verify_data=verify_data,
             normalizer=normalizer,
@@ -467,7 +463,7 @@ def create_dataloaders(
             data_dir=valid_data_dir,
             mode='valid',
             feature_type=feature_type,
-            max_samples=actual_valid_max,  # 個別指定されたサンプル数を使用
+            max_samples=actual_valid_max,  # Use split-specific sample limit.
             cache_features=cache_features,
             verify_data=verify_data,
             normalizer=normalizer,
@@ -499,7 +495,7 @@ def create_dataloaders(
             data_dir=test_data_dir,
             mode='test',
             feature_type=feature_type,
-            max_samples=actual_test_max,  # 個別指定されたサンプル数を使用
+            max_samples=actual_test_max,  # Use split-specific sample limit.
             cache_features=cache_features,
             verify_data=verify_data,
             normalizer=normalizer,
@@ -524,7 +520,7 @@ def create_dataloaders(
         logger.info(f"Test dataset: {len(test_dataset)} samples, "
                    f"{len(test_loader)} batches")
     
-    # 正規化器を保存（設定されている場合）
+    # Save normalizer if configured.
     if normalizer is not None and normalization.get('save_normalizer', True):
         normalizer_path = f"normalizer_{feature_type}.json"
         normalizer.save(normalizer_path)

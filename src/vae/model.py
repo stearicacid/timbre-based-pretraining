@@ -160,7 +160,8 @@ class HarmonicVAE(nn.Module):
         # negative_mask: a≠n && different label
         neg_mask = ~labels_eq                                   
 
-        # mask[i, j, k] は (labels[i] == labels[j] and i != j) and (labels[i] != labels[k]) が True の場合のみ True
+        # mask[i, j, k] is True only when
+        # (labels[i] == labels[j] and i != j) and (labels[i] != labels[k]).
         mask = pos_mask.unsqueeze(2) & neg_mask.unsqueeze(1)    # [N,N,N]
 
         losses_for_valid_triplets = losses[mask]

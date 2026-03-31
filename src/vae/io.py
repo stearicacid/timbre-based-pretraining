@@ -11,7 +11,7 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 def setup_device(cfg: DictConfig) -> torch.device:
-    """Setup device based on configuration."""
+    """Setup device based on config"""
     if cfg.device == "auto":
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     else:
@@ -27,7 +27,7 @@ def setup_device(cfg: DictConfig) -> torch.device:
     return device
 
 def setup_wandb(cfg: DictConfig):
-    """Sweep用のWandB初期化"""
+    """Initialize WandB for sweep runs."""
     if cfg.logging.wandb.enabled:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
@@ -54,7 +54,7 @@ def save_checkpoint(
     cfg: DictConfig,
     checkpoint_type: str = "best"
 ):
-    """チェックポイントの保存（bestとfinalのみ）"""
+    """Save checkpoints (best and final only)."""
     output_dir = Path(os.getcwd())
     
     if checkpoint_type == "best":

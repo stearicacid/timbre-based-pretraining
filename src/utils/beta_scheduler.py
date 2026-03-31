@@ -43,10 +43,6 @@ class BetaScheduler:
         
         if self.schedule_type == "linear_warmup":
             return self._linear_warmup(adjusted_epoch, adjusted_warmup_epochs)
-        # elif self.schedule_type == "cyclical":
-        #     return self._cyclical(adjusted_epoch)
-        elif self.schedule_type == "constant":
-            return self.beta_end
         else:
             raise ValueError(f"Unknown schedule_type: {self.schedule_type}")
     
@@ -57,24 +53,6 @@ class BetaScheduler:
         else:
             beta = self.beta_end     
         return beta
-    
-    # def _cyclical(self, adjusted_epoch: int) -> float:
-    #     """周期的スケジューリング（freeze期間後）"""
-    #     cycle_length = self.kwargs.get('cycle_length', 50)
-        
-    #     # 現在のサイクル内での位置
-    #     cycle_position = adjusted_epoch % cycle_length
-        
-    #     if cycle_position < cycle_length // 2:
-    #         # サイクルの前半：β増加
-    #         ratio = cycle_position / (cycle_length // 2)
-    #         beta = self.beta_start + (self.beta_end - self.beta_start) * ratio
-    #     else:
-    #         # サイクルの後半：β減少
-    #         ratio = (cycle_position - cycle_length // 2) / (cycle_length // 2)
-    #         beta = self.beta_end - (self.beta_end - self.beta_start) * ratio
-        
-    #     return beta
     
     def get_beta(self) -> float:
         return self.step(self.current_epoch)

@@ -184,8 +184,7 @@ def extract_nsynth_features(cfg, split="train", feature_type="harmonic", max_sam
             results_batch.clear()
 
     logger.info(f"EXTENDED processing completed: {completed_tasks} successful, {failed_tasks} failed")
-    
-    # 既存ファイルのパスも追加
+
     for file_id in existing_files:
         all_paths['feature_paths'].append(os.path.join(output_dir, f"feature_{file_id}.npy"))
         all_paths['f0_paths'].append(os.path.join(output_dir, f"f0_{file_id}.npy"))

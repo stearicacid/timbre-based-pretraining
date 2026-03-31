@@ -14,10 +14,10 @@ logger = logging.getLogger(__name__)
 
 def setup_logging(level: int = logging.INFO) -> None:
     """
-    ログ設定のセットアップ
+    Set up application logging.
     
     Args:
-        level: ログレベル
+        level: Log level.
     """
     logging.basicConfig(
         level=level,
@@ -31,7 +31,7 @@ def setup_logging(level: int = logging.INFO) -> None:
 
 def setup_wandb(cfg: DictConfig) -> None:
     """
-    WandBの初期化と設定
+    Initialize and configure WandB.
     
     Args:
         cfg: Hydra configuration
@@ -40,7 +40,7 @@ def setup_wandb(cfg: DictConfig) -> None:
         logger.info("WandB logging is disabled")
         return
     
-    # WandBの設定
+    # WandB configuration.
     wandb_config = {
         "project": cfg.logging.wandb.project,
         "name": cfg.logging.wandb.name or cfg.experiment_name,
@@ -50,14 +50,14 @@ def setup_wandb(cfg: DictConfig) -> None:
         "mode": cfg.logging.wandb.mode,
     }
     
-    # entityが設定されている場合のみ追加
+    # Add entity only when configured.
     if cfg.logging.wandb.entity:
         wandb_config["entity"] = cfg.logging.wandb.entity
     
-    # WandB初期化
+    # Initialize WandB.
     wandb.init(**wandb_config)
     
-    # 設定ファイルをアーティファクトとして保存
+    # Save config as an artifact.
     if cfg.logging.artifacts.log_config:
         log_config_artifact(cfg)
     
@@ -66,18 +66,18 @@ def setup_wandb(cfg: DictConfig) -> None:
 
 def log_config_artifact(cfg: DictConfig) -> None:
     """
-    設定ファイルをWandBアーティファクトとして保存
+    Save the config file as a WandB artifact.
     
     Args:
         cfg: Hydra configuration
     """
     try:
-        # 設定をYAMLファイルとして保存
+        # Save config as a YAML file.
         config_path = "config.yaml"
         with open(config_path, 'w') as f:
             OmegaConf.save(cfg, f)
         
-        # アーティファクトとして登録
+        # Register the file as an artifact.
         artifact = wandb.Artifact(
             name=f"{cfg.experiment_name}_config",
             type="config",
@@ -97,26 +97,26 @@ def log_model_info(
     log_gradients: bool = True
 ) -> None:
     """
-    モデルの情報をWandBにログ
+    Log model information to WandB.
     
     Args:
-        model: PyTorchモデル
-        sample_input: サンプル入力テンソル
-        log_gradients: 勾配をログするかどうか
+        model: PyTorch model.
+        sample_input: Sample input tensor.
+        log_gradients: Whether to log gradients.
     """
     if not wandb.run:
         return
     
     try:
-        # モデルアーキテクチャの詳細を取得
+        # Collect detailed model summary.
         model_info = get_model_summary(model, sample_input)
         
-        # モデル情報をWandBにログ
+        # Log model information to WandB.
         wandb.config.update({
             "model_info": model_info
         })
         
-        # モデルの監視を開始（勾配とパラメータ）
+        # Start model watching (gradients and parameters).
         if log_gradients:
             wandb.watch(
                 model, 
@@ -133,20 +133,20 @@ def log_model_info(
 
 def get_model_summary(model: nn.Module, sample_input: torch.Tensor) -> Dict[str, Any]:
     """
-    モデルの詳細情報を取得
+    Get detailed model information.
     
     Args:
-        model: PyTorchモデル
-        sample_input: サンプル入力テンソル
+        model: PyTorch model.
+        sample_input: Sample input tensor.
         
     Returns:
-        モデル情報の辞書
+        Dictionary with model information.
     """
-    # パラメータ数の計算
+    # Count parameters.
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     
-    # モデルサイズの計算（MB）
+    # Compute model size in MB.
     param_size = 0
     buffer_size = 0
     
@@ -158,7 +158,7 @@ def get_model_summary(model: nn.Module, sample_input: torch.Tensor) -> Dict[str,
     
     model_size_mb = (param_size + buffer_size) / 1024 / 1024
     
-    # 入力/出力サイズの取得
+    # Inspect input/output shapes.
     model.eval()
     with torch.no_grad():
         try:
@@ -186,12 +186,12 @@ def log_learning_curves(
     save_path: Optional[str] = None
 ) -> None:
     """
-    学習曲線をプロットしてWandBにログ
+    Plot learning curves and log them to WandB.
     
     Args:
-        train_losses: 訓練損失の履歴
-        val_losses: 検証損失の履歴
-        save_path: 保存パス（オプション）
+        train_losses: Training loss history.
+        val_losses: Validation loss history.
+        save_path: Optional local save path.
     """
     if not wandb.run:
         return
@@ -240,10 +240,10 @@ def log_learning_curves(
         
         plt.tight_layout()
         
-        # WandBにログ
+        # Log figure to WandB.
         wandb.log({"learning_curves": wandb.Image(fig)})
         
-        # ローカルに保存
+        # Save locally when requested.
         if save_path:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
         
@@ -260,13 +260,13 @@ def log_harmonic_analysis(
     sample_idx: int = 0
 ) -> None:
     """
-    倍音構造の分析結果をWandBにログ
+    Log harmonic-structure analysis results to WandB.
     
     Args:
-        original: 元の倍音構造 [45]
-        reconstructed: 再構成された倍音構造 [45]
-        epoch: エポック番号
-        sample_idx: サンプル番号
+        original: Original harmonic structure [45].
+        reconstructed: Reconstructed harmonic structure [45].
+        epoch: Epoch index.
+        sample_idx: Sample index.
     """
     if not wandb.run:
         return
@@ -277,21 +277,21 @@ def log_harmonic_analysis(
         
         harmonic_numbers = np.arange(1, 46)
         
-        # 元の倍音構造
+        # Original harmonic structure.
         axes[0, 0].bar(harmonic_numbers, original, alpha=0.7, color='blue')
         axes[0, 0].set_title('Original Harmonic Structure')
         axes[0, 0].set_xlabel('Harmonic Number')
         axes[0, 0].set_ylabel('Amplitude')
         axes[0, 0].grid(True, alpha=0.3)
         
-        # 再構成された倍音構造
+        # Reconstructed harmonic structure.
         axes[0, 1].bar(harmonic_numbers, reconstructed, alpha=0.7, color='red')
         axes[0, 1].set_title('Reconstructed Harmonic Structure')
         axes[0, 1].set_xlabel('Harmonic Number')
         axes[0, 1].set_ylabel('Amplitude')
         axes[0, 1].grid(True, alpha=0.3)
         
-        # 比較プロット
+        # Comparison plot.
         axes[1, 0].plot(harmonic_numbers, original, 'o-', label='Original', alpha=0.7)
         axes[1, 0].plot(harmonic_numbers, reconstructed, 's-', label='Reconstructed', alpha=0.7)
         axes[1, 0].set_title('Comparison')
@@ -300,7 +300,7 @@ def log_harmonic_analysis(
         axes[1, 0].legend()
         axes[1, 0].grid(True, alpha=0.3)
         
-        # 誤差分析
+        # Error analysis.
         error = np.abs(original - reconstructed)
         axes[1, 1].bar(harmonic_numbers, error, alpha=0.7, color='green')
         axes[1, 1].set_title(f'Absolute Error (MSE: {np.mean(error**2):.4f})')
@@ -310,7 +310,7 @@ def log_harmonic_analysis(
         
         plt.tight_layout()
         
-        # WandBにログ
+        # Log metrics and figure to WandB.
         wandb.log({
             f"harmonic_analysis_epoch_{epoch}": wandb.Image(fig),
             f"reconstruction_mse_epoch_{epoch}": np.mean(error**2),
@@ -329,12 +329,12 @@ def log_latent_distribution(
     labels: Optional[np.ndarray] = None
 ) -> None:
     """
-    潜在空間の分布をWandBにログ
+    Log latent-space distribution to WandB.
     
     Args:
-        latent_samples: 潜在変数のサンプル [n_samples, latent_dim]
-        epoch: エポック番号
-        labels: ラベル（クラスタリング結果など）
+        latent_samples: Latent samples [n_samples, latent_dim].
+        epoch: Epoch index.
+        labels: Optional labels (for clustering results, etc.).
     """
     if not wandb.run:
         return
@@ -342,7 +342,7 @@ def log_latent_distribution(
     try:
         latent_dim = latent_samples.shape[1]
         
-        # 2D散布図（最初の2次元）
+        # 2D scatter plot (first two dimensions).
         if latent_dim >= 2:
             fig, ax = plt.subplots(1, 1, figsize=(8, 6))
             
@@ -362,7 +362,7 @@ def log_latent_distribution(
             wandb.log({f"latent_space_2d_epoch_{epoch}": wandb.Image(fig)})
             plt.close()
         
-        # 各次元のヒストグラム
+        # Histograms for each dimension.
         fig, axes = plt.subplots(2, 5, figsize=(15, 6))
         axes = axes.flatten()
         
@@ -371,14 +371,14 @@ def log_latent_distribution(
             axes[dim].set_title(f'Dim {dim+1}')
             axes[dim].grid(True, alpha=0.3)
             
-            # 正規分布との比較
+            # Compare against a normal distribution.
             x = np.linspace(latent_samples[:, dim].min(), latent_samples[:, dim].max(), 100)
             mu, sigma = np.mean(latent_samples[:, dim]), np.std(latent_samples[:, dim])
             normal_dist = (1 / (sigma * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((x - mu) / sigma) ** 2)
             axes[dim].plot(x, normal_dist, 'r-', alpha=0.8, label='Normal')
             axes[dim].legend()
         
-        # 未使用のサブプロットを非表示
+        # Hide unused subplot axes.
         for dim in range(min(10, latent_dim), 10):
             axes[dim].set_visible(False)
         
@@ -398,26 +398,26 @@ def log_reconstruction_metrics(
     prefix: str = "val"
 ) -> Dict[str, float]:
     """
-    再構成メトリクスを計算してログ
+    Compute and log reconstruction metrics.
     
     Args:
-        original_batch: 元のバッチ [batch_size, 45]
-        reconstructed_batch: 再構成されたバッチ [batch_size, 45]
-        prefix: メトリクス名のプレフィックス
+        original_batch: Original batch [batch_size, 45].
+        reconstructed_batch: Reconstructed batch [batch_size, 45].
+        prefix: Prefix for metric names.
         
     Returns:
-        計算されたメトリクス
+        Computed metrics.
     """
     with torch.no_grad():
-        # NumPy配列に変換
+        # Convert to NumPy arrays.
         orig = original_batch.cpu().numpy()
         recon = reconstructed_batch.cpu().numpy()
         
-        # メトリクス計算
+        # Compute metrics.
         mse = np.mean((orig - recon) ** 2)
         mae = np.mean(np.abs(orig - recon))
         
-        # 各倍音の相関
+        # Per-harmonic correlation.
         correlations = []
         for i in range(orig.shape[1]):
             if np.std(orig[:, i]) > 1e-8 and np.std(recon[:, i]) > 1e-8:
@@ -426,7 +426,7 @@ def log_reconstruction_metrics(
         
         avg_correlation = np.mean(correlations) if correlations else 0.0
         
-        # R²スコア
+        # R-squared score.
         ss_res = np.sum((orig - recon) ** 2)
         ss_tot = np.sum((orig - np.mean(orig)) ** 2)
         r2_score = 1 - (ss_res / (ss_tot + 1e-8))
