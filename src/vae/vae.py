@@ -2,10 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import List, Tuple, Optional, Dict
-import random
-import time  
 
-from src.losses import loss_function
+from src.vae.losses import loss_function
 
 class HarmonicVAE(nn.Module):
     def __init__(
@@ -156,6 +154,28 @@ class HarmonicVAE(nn.Module):
             self.current_beta = beta
         else:
             self.current_beta = 0.0
+
+    def loss_function(
+        self,
+        recon_x: torch.Tensor,
+        x: torch.Tensor,
+        mu: torch.Tensor,
+        logvar: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
+        loss_weights: Optional[dict] = None,
+        logger=None,
+    ) -> dict:
+        """Delegate loss computation to the shared VAE loss implementation."""
+        return loss_function(
+            self,
+            recon_x,
+            x,
+            mu,
+            logvar=logvar,
+            labels=labels,
+            loss_weights=loss_weights,
+            logger=logger,
+        )
     
 
     def mine_triplets(self, embeddings: torch.Tensor, labels: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
