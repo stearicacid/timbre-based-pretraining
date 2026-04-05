@@ -7,6 +7,9 @@ data:
   lakh_dataset_dir: "path_to_lmd"
   dismiss_midis: null
   normalizer_path: "path_to_normalizer.json"
+  train_data_dir: "path_to_train_feature_dir"
+  valid_data_dir: "path_to_valid_feature_dir"
+  test_data_dir: "path_to_test_feature_dir"
 
 clustering:
   k: 39

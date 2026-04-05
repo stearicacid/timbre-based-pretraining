@@ -91,13 +91,10 @@ def synthesize_audio_from_harmonic(
     logger.debug(f"  magnitudes_tf: {magnitudes_tf.shape}")
 
     # Synthesize harmonic and noise
-    audio_harm = harmonic_synth(
-        amplitudes=amps_tf, 
-        harmonic_distribution=harmonic_dist_tf, 
-        f0_hz=f0_hz_tf
-    )  # [1, n_samples]
+    # Keras requires the first call argument to be positional.
+    audio_harm = harmonic_synth(amps_tf, harmonic_dist_tf, f0_hz_tf)  # [1, n_samples]
 
-    audio_noise = noise_synth(magnitudes=magnitudes_tf)  # [1, n_samples]
+    audio_noise = noise_synth(magnitudes_tf)  # [1, n_samples]
     audio_dry = audio_harm + noise_level * audio_noise
 
     # Apply reverb (convolution). ddsp.effects.Reverb expects (audio, ir) or (ir, audio)

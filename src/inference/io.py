@@ -13,9 +13,12 @@ def _init_worker() -> None:
     os.environ["OMP_NUM_THREADS"] = "1"
     os.environ["MKL_NUM_THREADS"] = "1"
     os.environ["NUMEXPR_NUM_THREADS"] = "1"
+    # Keep TF workers CPU-only to avoid per-process GPU context allocation.
+    os.environ["CUDA_VISIBLE_DEVICES"] = ""
     try:
         import tensorflow as tf
 
+        tf.config.set_visible_devices([], "GPU")
         tf.config.threading.set_inter_op_parallelism_threads(1)
         tf.config.threading.set_intra_op_parallelism_threads(1)
     except Exception:

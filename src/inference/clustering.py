@@ -54,7 +54,7 @@ class HarmonicClusterAnalyzer:
         model.eval()
         return model
 
-    def load_test_data(self) -> Tuple[np.ndarray, np.ndarray]:
+    def load_test_data(self, inference_data_cfg=None) -> Tuple[np.ndarray, np.ndarray]:
         data_cfg = self.cfg.data if hasattr(self.cfg, "data") else self.cfg.dataset
 
         normalization_cfg = None
@@ -64,6 +64,18 @@ class HarmonicClusterAnalyzer:
         train_data_dir = str(data_cfg.train_data_dir)
         valid_data_dir = str(data_cfg.valid_data_dir)
         test_data_dir = str(data_cfg.test_data_dir)
+
+        if inference_data_cfg is not None:
+            train_data_dir = str(inference_data_cfg.get("train_data_dir", train_data_dir))
+            valid_data_dir = str(inference_data_cfg.get("valid_data_dir", valid_data_dir))
+            test_data_dir = str(inference_data_cfg.get("test_data_dir", test_data_dir))
+
+        logger.info(
+            "Clustering data dirs: train=%s valid=%s test=%s",
+            train_data_dir,
+            valid_data_dir,
+            test_data_dir,
+        )
 
         test_loader, _ = create_dataloaders(
             train_data_dir=train_data_dir,
@@ -152,7 +164,7 @@ def load_or_create_clustering_data(analyzer: HarmonicClusterAnalyzer, output_dir
             centers = pickle.load(f)
         return scaler, kmeans, members_by_cluster, centers
 
-    harmonic_features, _ = analyzer.load_test_data()
+    harmonic_features, _ = analyzer.load_test_data(cfg.data)
     latent_features = analyzer.extract_latent_representations(harmonic_features)
 
     scaler = StandardScaler()
