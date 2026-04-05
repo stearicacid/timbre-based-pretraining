@@ -1,0 +1,44 @@
+model:
+  checkpoint_path: "path_to_your_checkpoint"
+  train_config_path: "path_to_your_training_config"
+
+data:
+  split_info_pkl: "path_to_split_info.pkl"
+  lakh_dataset_dir: "path_to_lmd"
+  dismiss_midis: null
+  normalizer_path: "path_to_normalizer.json"
+
+clustering:
+  k: 39
+  random_state: 42
+  n_init: 10
+  force_recalc: false
+
+tau:
+  mode: auto
+  manual_value: 0.5
+  clamp_min: 0.5
+  clamp_max: 1.0
+  round_digits: 3
+
+synthesis:
+  max_midis: 1000000
+  sample_rate: 16000
+  segment_duration: 10.0
+  num_workers: 8
+
+output:
+  root_dir: "./outputs/inference/${now:%Y-%m-%d_%H-%M-%S}"
+  save_metadata: true
+  save_summary: true
+
+runtime:
+  seed: 42
+  deterministic: true
+  disable_tf_gpu: true
+
+hydra:
+  run:
+    dir: ${output.root_dir}
+  job:
+    chdir: true

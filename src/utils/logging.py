@@ -29,6 +29,19 @@ def setup_logging(level: int = logging.INFO) -> None:
     )
 
 
+def setup_inference_logging(level: int = logging.INFO) -> None:
+    """Set up console logging for inference entrypoints."""
+    root = logging.getLogger()
+    root.setLevel(level)
+
+    if not any(isinstance(h, logging.StreamHandler) for h in root.handlers):
+        handler = logging.StreamHandler()
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        )
+        root.addHandler(handler)
+
+
 def setup_wandb(cfg: DictConfig) -> None:
     """
     Initialize and configure WandB.
