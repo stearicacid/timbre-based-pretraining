@@ -1,9 +1,9 @@
 _target_: src.data.dataset.create_dataloaders
 
 # Data paths (matching your existing structure)
-train_data_dir: "/data3/rin/ddsp/train"
-valid_data_dir: "/data3/rin/ddsp/valid"
-test_data_dir: "/data3/rin/ddsp/test"
+train_data_dir: "your_train_feature_dir"
+valid_data_dir: "your_valid_feature_dir"
+test_data_dir: "your_test_feature_dir"
 
 # Dataset mode
 mode: "train_val"  # 'train_val', 'train_only', 'test_only'

@@ -119,6 +119,9 @@ def extract_harmonic_distribution(audio_np, cfg):
     noise_magnitudes_np = controls['noise_magnitudes'][0].numpy()
         
     loudness_db_original = loudness_db_tf[0].numpy()
+    f0_hz_np = np.asarray(f0_hz_np, dtype=np.float32)[:time_steps]
+    loudness_db_original = loudness_db_tf[0].numpy().astype(np.float32, copy=False)[:time_steps]
+    f0_confidence_np = np.asarray(f0_confidence_np, dtype=np.float32)[:time_steps]
     
     return {
         'harmonic_distribution': harmonic_distribution_np,

@@ -1,8 +1,8 @@
 # WandB settings
 wandb:
   enabled: true
-  project: "vaemonics"
-  entity: "rinsato-waseda-university"
+  project: "your_project_name"
+  entity: "your_wandb_entity"
   name: null  
   tags: ["vae", "harmonic"]
   notes: "VAE for harmonic structure learning"

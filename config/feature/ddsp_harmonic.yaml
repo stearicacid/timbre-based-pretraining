@@ -2,11 +2,8 @@
 type: harmonic
 
 audio:
-  # Input waveform sample rate expected by DDSP utilities.
   sample_rate: 16000
-  # Fixed waveform length used for padding/truncation.
   max_length: 64000
-  # Used by DDSP F0/loudness computation.
   frame_rate: 250
 
 ddsp:
