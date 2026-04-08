@@ -1,4 +1,4 @@
-# timbre-based-pretraining
+# Timbre-Based Pretraining
 
 This repository contains the upstream pipeline of our ICASSP 2026 paper:
 
